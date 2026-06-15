@@ -283,9 +283,10 @@ tr:hover td { background: var(--bg2); }
           <th>ROAS D0<br><span style="font-weight:400;font-size:10px">DoD</span></th>
           <th>ROAS D7<br><span style="font-weight:400;font-size:10px">DoD</span></th>
           <th>CTCV ratio</th>
+          <th>Market share<br><span style="font-weight:400;font-size:10px">DoD</span></th>
         </tr>
       </thead>
-      <tbody id="daily-table"><tr class="empty-row"><td colspan="7">Loading...</td></tr></tbody>
+      <tbody id="daily-table"><tr class="empty-row"><td colspan="8">Loading...</td></tr></tbody>
     </table>
   </div>
   <div class="note" id="daily-note"></div>
@@ -350,11 +351,11 @@ async function loadCampaigns() {
     const am     = (amRows[i]     || [])[0] || '';
     if (!name) continue;
     if (!am.toLowerCase().includes('alex.li')) continue;
-    if (status !== 'Running') continue;
+    if (status !== 'Running' && status !== 'Paused') continue;
     if (!link.startsWith('https://docs.google.com/spreadsheets/d/')) continue;
     const fileId = link.split('/d/')[1]?.split('/')[0];
     if (!fileId) continue;
-    campaigns.push({name, id: fileId});
+    campaigns.push({name, id: fileId, status});
   }
   CAMPAIGNS = campaigns;
   return campaigns;
@@ -426,7 +427,7 @@ let dailyData = null;
 async function refreshDaily() {
   setStatus('daily-status', 'Fetching master sheet...', true);
   setProgress('daily-progress', 10);
-  document.getElementById('daily-table').innerHTML = '<tr class="empty-row"><td colspan="7">Loading...</td></tr>';
+  document.getElementById('daily-table').innerHTML = '<tr class="empty-row"><td colspan="8">Loading...</td></tr>';
   document.getElementById('daily-summary').innerHTML = '';
 
   try {
@@ -438,6 +439,7 @@ async function refreshDaily() {
       'BR1:BU500',
       'CC1:CF500',
       'CH1:CK500',
+      'T1:Z500',
     ];
 
     setProgress('daily-progress', 30);
@@ -457,6 +459,7 @@ async function refreshDaily() {
     const spendRows = vr[4].values || [];
     const instRows  = vr[5].values || [];
     const ctcvRows  = vr[6].values || [];
+    const mktRows   = vr[7].values || [];
 
     // Find the date row by scanning for YYYY/MM/DD pattern
     let dateRow = [];
@@ -479,15 +482,17 @@ async function refreshDaily() {
       const am = amRow[0] || '';
 
       if (!name || !am.toLowerCase().includes('alex.li')) continue;
-      if (status !== 'Running') continue;
+      const instToday = parseNum((instRows[i] || [])[0]);
+      if (status !== 'Running' && !(instToday > 0)) continue;
 
       const spend  = (spendRows[i] || []).slice(0, 4).map(parseNum);
       const inst   = (instRows[i] || []).slice(0, 4).map(parseNum);
       const roasD0 = (roasD0Rows[i] || []).slice(0, 4).map(parseNum);
       const roasD7 = (roasD7Rows[i] || []).slice(0, 4).map(parseNum);
       const ctcv   = (ctcvRows[i] || []).slice(0, 4).map(parseNum);
+      const mkt    = (mktRows[i]  || []).slice(0, 4).map(parseNum);
 
-      dailyData.campaigns.push({name, status, spend, inst, roasD0, roasD7, ctcv});
+      dailyData.campaigns.push({name, status, spend, inst, roasD0, roasD7, ctcv, mkt});
     }
 
     setProgress('daily-progress', 100);
@@ -507,7 +512,7 @@ async function refreshDaily() {
     setProgress('daily-progress', 0);
     setStatus('daily-status', `Error: ${e.message}`);
     document.getElementById('daily-table').innerHTML =
-      `<tr class="empty-row"><td colspan="7" style="color:var(--red)">${e.message}</td></tr>`;
+      `<tr class="empty-row"><td colspan="8" style="color:var(--red)">${e.message}</td></tr>`;
   }
 }
 
@@ -529,6 +534,8 @@ function renderDaily() {
     const rD7    = c.roasD7[idx];
     const pRD7   = hasPrev ? c.roasD7[prevIdx] : null;
     const ctcv   = c.ctcv[idx];
+    const mkt    = c.mkt ? c.mkt[idx] : null;
+    const pMkt   = hasPrev && c.mkt ? c.mkt[prevIdx] : null;
 
     if (spend != null) { totalSpend += spend; spendCount++; }
     if (inst != null)  { totalInst += inst;  instCount++; }
@@ -549,11 +556,12 @@ function renderDaily() {
       <td>${metricCell(rD0, pRD0, v => p(v)+'%', false)}</td>
       <td>${metricCell(rD7, pRD7, v => p(v)+'%', false)}</td>
       <td>${ctcvFlag}</td>
+      <td>${metricCell(mkt, pMkt, v => p(v)+'%')}</td>
     </tr>`;
   });
 
   document.getElementById('daily-table').innerHTML = rows.join('') ||
-    '<tr class="empty-row"><td colspan="7">No campaigns found</td></tr>';
+    '<tr class="empty-row"><td colspan="8">No campaigns found</td></tr>';
 
   document.getElementById('daily-summary').innerHTML = `
     <div class="mcard"><div class="mcard-label">Total spend</div><div class="mcard-val">${fmt$(totalSpend)}</div></div>
@@ -714,8 +722,10 @@ function renderWeekly() {
     const curr = getWeek(d, week);
     const prev = prevWeek ? getWeek(d, prevWeek) : null;
     if (!curr) { rows.push({name: c.name, nodata: true}); return; }
+    // Skip paused campaigns with no installs this week
+    if (c.status === 'Paused' && !(curr.installs > 0)) return;
 
-    rows.push({name: c.name, curr, prev});
+    rows.push({name: c.name, curr, prev, status: c.status});
     if (curr.installs != null) totalInst += curr.installs;
     if (curr.spend != null) totalSpend += curr.spend;
     if (curr.roasD0 != null) { roasD0Sum += curr.roasD0; roasCount++; }
@@ -734,8 +744,9 @@ function renderWeekly() {
     if (r.err) return `<tr><td>${r.name.replace(/\[CN\]\s*/,'')}</td><td colspan="4" class="err-cell">Error: ${r.err}</td></tr>`;
     if (r.nodata) return `<tr><td style="color:var(--text3)">${r.name.replace(/\[CN\]\s*/,'')}</td><td colspan="4" style="color:var(--text3);font-size:11px;text-align:center">no data for this week</td></tr>`;
     const {curr, prev} = r;
+    const pausedBadge = r.status === 'Paused' ? ' <span class="badge badge-amber">Paused</span>' : '';
     return `<tr>
-      <td title="${r.name}">${r.name.replace(/\[CN\]\s*/,'')}</td>
+      <td title="${r.name}">${r.name.replace(/\[CN\]\s*/,'')}${pausedBadge}</td>
       <td>${metricCell(curr.installs, prev?.installs, fmtInt)}</td>
       <td>${metricCell(curr.spend, prev?.spend, fmt$)}</td>
       <td>${metricCell(curr.roasD0, prev?.roasD0, v => p(v)+'%')}</td>
