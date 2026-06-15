@@ -276,17 +276,18 @@ tr:hover td { background: var(--bg2); }
     <table>
       <thead>
         <tr>
-          <th style="min-width:200px">Campaign</th>
+          <th style="min-width:180px" data-col="name">Campaign <span class="sort-icon">↕</span></th>
+          <th style="min-width:120px">OID</th>
           <th>Status</th>
-          <th>Spend<br><span style="font-weight:400;font-size:10px">DoD</span></th>
-          <th>Installs<br><span style="font-weight:400;font-size:10px">DoD</span></th>
-          <th>ROAS D0<br><span style="font-weight:400;font-size:10px">DoD</span></th>
-          <th>ROAS D7<br><span style="font-weight:400;font-size:10px">DoD</span></th>
-          <th>CTCV ratio</th>
-          <th>Market share<br><span style="font-weight:400;font-size:10px">DoD</span></th>
+          <th data-col="spend" onclick="sortDaily('spend')" style="cursor:pointer">Spend<br><span style="font-weight:400;font-size:10px">DoD ↕</span></th>
+          <th data-col="inst" onclick="sortDaily('inst')" style="cursor:pointer">Installs<br><span style="font-weight:400;font-size:10px">DoD ↕</span></th>
+          <th data-col="roasD0" onclick="sortDaily('roasD0')" style="cursor:pointer">ROAS D0<br><span style="font-weight:400;font-size:10px">DoD ↕</span></th>
+          <th data-col="roasD7" onclick="sortDaily('roasD7')" style="cursor:pointer">ROAS D7<br><span style="font-weight:400;font-size:10px">DoD ↕</span></th>
+          <th data-col="ctcv" onclick="sortDaily('ctcv')" style="cursor:pointer">CTCV ratio ↕</th>
+          <th data-col="mkt" onclick="sortDaily('mkt')" style="cursor:pointer">Market share<br><span style="font-weight:400;font-size:10px">DoD ↕</span></th>
         </tr>
       </thead>
-      <tbody id="daily-table"><tr class="empty-row"><td colspan="8">Loading...</td></tr></tbody>
+      <tbody id="daily-table"><tr class="empty-row"><td colspan="9">Loading...</td></tr></tbody>
     </table>
   </div>
   <div class="note" id="daily-note"></div>
@@ -306,14 +307,15 @@ tr:hover td { background: var(--bg2); }
     <table>
       <thead>
         <tr>
-          <th style="min-width:200px">Campaign</th>
-          <th>Installs<br><span style="font-weight:400;font-size:10px">WoW</span></th>
-          <th>Spend<br><span style="font-weight:400;font-size:10px">WoW</span></th>
-          <th>ROAS D0<br><span style="font-weight:400;font-size:10px">WoW</span></th>
-          <th>ROAS D7<br><span style="font-weight:400;font-size:10px">WoW</span></th>
+          <th style="min-width:180px">Campaign</th>
+          <th style="min-width:120px">OID</th>
+          <th data-col="installs" onclick="sortWeekly('installs')" style="cursor:pointer">Installs<br><span style="font-weight:400;font-size:10px">WoW ↕</span></th>
+          <th data-col="spend" onclick="sortWeekly('spend')" style="cursor:pointer">Spend<br><span style="font-weight:400;font-size:10px">WoW ↕</span></th>
+          <th data-col="roasD0" onclick="sortWeekly('roasD0')" style="cursor:pointer">ROAS D0<br><span style="font-weight:400;font-size:10px">WoW ↕</span></th>
+          <th data-col="roasD7" onclick="sortWeekly('roasD7')" style="cursor:pointer">ROAS D7<br><span style="font-weight:400;font-size:10px">WoW ↕</span></th>
         </tr>
       </thead>
-      <tbody id="weekly-table"><tr class="empty-row"><td colspan="5">Loading...</td></tr></tbody>
+      <tbody id="weekly-table"><tr class="empty-row"><td colspan="6">Loading...</td></tr></tbody>
     </table>
   </div>
   <div class="note" id="weekly-note"></div>
@@ -330,7 +332,7 @@ let CAMPAIGNS = []; // dynamically loaded from master sheet
 async function loadCampaigns() {
   // Fetch cols A (name), C (status), E (gsheet link), G (AM) from master sheet
   const batchUrl = `https://sheets.googleapis.com/v4/spreadsheets/${MASTER_ID}/values:batchGet?key=${API_KEY}` +
-    `&ranges=${encodeURIComponent('A1:A500')}` +
+    `&ranges=${encodeURIComponent('A1:B500')}` +
     `&ranges=${encodeURIComponent('C1:C500')}` +
     `&ranges=${encodeURIComponent('E1:E500')}` +
     `&ranges=${encodeURIComponent('G1:G500')}`;
@@ -346,6 +348,7 @@ async function loadCampaigns() {
   const campaigns = [];
   for (let i = 0; i < nameRows.length; i++) {
     const name   = (nameRows[i]   || [])[0] || '';
+    const oid    = (nameRows[i]   || [])[1] || '';
     const status = (statusRows[i] || [])[0] || '';
     const link   = (linkRows[i]   || [])[0] || '';
     const am     = (amRows[i]     || [])[0] || '';
@@ -355,7 +358,7 @@ async function loadCampaigns() {
     if (!link.startsWith('https://docs.google.com/spreadsheets/d/')) continue;
     const fileId = link.split('/d/')[1]?.split('/')[0];
     if (!fileId) continue;
-    campaigns.push({name, id: fileId, status});
+    campaigns.push({name, oid, id: fileId, status});
   }
   CAMPAIGNS = campaigns;
   return campaigns;
@@ -427,7 +430,7 @@ let dailyData = null;
 async function refreshDaily() {
   setStatus('daily-status', 'Fetching master sheet...', true);
   setProgress('daily-progress', 10);
-  document.getElementById('daily-table').innerHTML = '<tr class="empty-row"><td colspan="8">Loading...</td></tr>';
+  document.getElementById('daily-table').innerHTML = '<tr class="empty-row"><td colspan="9">Loading...</td></tr>';
   document.getElementById('daily-summary').innerHTML = '';
 
   try {
@@ -478,6 +481,7 @@ async function refreshDaily() {
       const nameRow = nameRows[i] || [];
       const amRow = amRows[i] || [];
       const name = nameRow[0] || '';
+      const oid  = nameRow[1] || '';
       const status = nameRow[2] || '';
       const am = amRow[0] || '';
 
@@ -492,7 +496,7 @@ async function refreshDaily() {
       const ctcv   = (ctcvRows[i] || []).slice(0, 4).map(parseNum);
       const mkt    = (mktRows[i]  || []).slice(0, 4).map(parseNum);
 
-      dailyData.campaigns.push({name, status, spend, inst, roasD0, roasD7, ctcv, mkt});
+      dailyData.campaigns.push({name, oid, status, spend, inst, roasD0, roasD7, ctcv, mkt});
     }
 
     setProgress('daily-progress', 100);
@@ -512,7 +516,7 @@ async function refreshDaily() {
     setProgress('daily-progress', 0);
     setStatus('daily-status', `Error: ${e.message}`);
     document.getElementById('daily-table').innerHTML =
-      `<tr class="empty-row"><td colspan="8" style="color:var(--red)">${e.message}</td></tr>`;
+      `<tr class="empty-row"><td colspan="9" style="color:var(--red)">${e.message}</td></tr>`;
   }
 }
 
@@ -524,7 +528,22 @@ function renderDaily() {
 
   let totalSpend = 0, totalInst = 0, spendCount = 0, instCount = 0;
 
-  const rows = dailyData.campaigns.map(c => {
+  let sortedCampaigns = [...dailyData.campaigns];
+  if (dailySort.col) {
+    sortedCampaigns.sort((a, b) => {
+      const getVal = c => {
+        if (dailySort.col === 'spend')  return c.spend[idx] ?? -Infinity;
+        if (dailySort.col === 'inst')   return c.inst[idx]  ?? -Infinity;
+        if (dailySort.col === 'roasD0') return c.roasD0[idx] ?? -Infinity;
+        if (dailySort.col === 'roasD7') return c.roasD7[idx] ?? -Infinity;
+        if (dailySort.col === 'ctcv')   return c.ctcv[idx]  ?? -Infinity;
+        if (dailySort.col === 'mkt')    return c.mkt ? (c.mkt[idx] ?? -Infinity) : -Infinity;
+        return 0;
+      };
+      return dailySort.asc ? getVal(a) - getVal(b) : getVal(b) - getVal(a);
+    });
+  }
+  const rows = sortedCampaigns.map(c => {
     const spend  = c.spend[idx];
     const pSpend = hasPrev ? c.spend[prevIdx] : null;
     const inst   = c.inst[idx];
@@ -550,6 +569,7 @@ function renderDaily() {
 
     return `<tr>
       <td title="${c.name}">${c.name.replace(/\[CN\]\s*/,'')}</td>
+      <td style="font-size:11px;color:var(--text3)">${c.oid}</td>
       <td>${statusBadge}</td>
       <td>${metricCell(spend, pSpend, fmt$, false)}</td>
       <td>${metricCell(inst, pInst, fmtInt, false)}</td>
@@ -561,7 +581,7 @@ function renderDaily() {
   });
 
   document.getElementById('daily-table').innerHTML = rows.join('') ||
-    '<tr class="empty-row"><td colspan="8">No campaigns found</td></tr>';
+    '<tr class="empty-row"><td colspan="9">No campaigns found</td></tr>';
 
   document.getElementById('daily-summary').innerHTML = `
     <div class="mcard"><div class="mcard-label">Total spend</div><div class="mcard-val">${fmt$(totalSpend)}</div></div>
@@ -575,11 +595,20 @@ function renderDaily() {
 let weeklyData = {};
 let availableWeeks = [];
 
+async function fetchWithRetry(url, retries=2, delay=1000) {
+  for (let i = 0; i <= retries; i++) {
+    const res = await fetch(url);
+    if (res.status === 429 && i < retries) {
+      await new Promise(r => setTimeout(r, delay * (i + 1)));
+      continue;
+    }
+    return res;
+  }
+}
+
 async function fetchWeeklySheet(campaign) {
-  // Fetch the sheet — we need to find the tab named "Weekly" or similar
-  // First get sheet metadata to find correct tab
   const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${campaign.id}?key=${API_KEY}&fields=sheets.properties`;
-  const metaRes = await fetch(metaUrl);
+  const metaRes = await fetchWithRetry(metaUrl);
   if (!metaRes.ok) throw new Error(`Meta ${metaRes.status}`);
   const meta = await metaRes.json();
 
@@ -594,7 +623,7 @@ async function fetchWeeklySheet(campaign) {
   // Get last 200 rows of the sheet
   const range = `'${tabName}'!A1:Z300`;
   const valUrl = `https://sheets.googleapis.com/v4/spreadsheets/${campaign.id}/values/${encodeURIComponent(range)}?key=${API_KEY}`;
-  const valRes = await fetch(valUrl);
+  const valRes = await fetchWithRetry(valUrl);
   if (!valRes.ok) throw new Error(`Values ${valRes.status}`);
   const valJson = await valRes.json();
   const rows = valJson.values || [];
@@ -663,17 +692,23 @@ async function refreshWeekly() {
 
   setStatus('weekly-status', `Found ${CAMPAIGNS.length} campaigns, fetching weekly data...`, true);
   let done = 0;
-  await Promise.allSettled(CAMPAIGNS.map(async c => {
-    try {
-      const weeks = await fetchWeeklySheet(c);
-      weeklyData[c.name] = weeks;
-    } catch(e) {
-      weeklyData[c.name] = {error: e.message};
-    }
-    done++;
-    setProgress('weekly-progress', Math.round((done / CAMPAIGNS.length) * 100));
-    setStatus('weekly-status', `Loaded ${done}/${CAMPAIGNS.length} campaigns...`, true);
-  }));
+  // Fetch in batches of 4 with delay to avoid 429 rate limits
+  const batchSize = 4;
+  for (let i = 0; i < CAMPAIGNS.length; i += batchSize) {
+    const batch = CAMPAIGNS.slice(i, i + batchSize);
+    await Promise.allSettled(batch.map(async c => {
+      try {
+        const weeks = await fetchWeeklySheet(c);
+        weeklyData[c.name] = weeks;
+      } catch(e) {
+        weeklyData[c.name] = {error: e.message};
+      }
+      done++;
+      setProgress('weekly-progress', Math.round((done / CAMPAIGNS.length) * 100));
+      setStatus('weekly-status', `Loaded ${done}/${CAMPAIGNS.length} campaigns...`, true);
+    }));
+    if (i + batchSize < CAMPAIGNS.length) await new Promise(r => setTimeout(r, 800));
+  }
 
   // Collect all unique week ranges
   const weekSet = new Set();
@@ -725,12 +760,29 @@ function renderWeekly() {
     // Skip paused campaigns with no installs this week
     if (c.status === 'Paused' && !(curr.installs > 0)) return;
 
-    rows.push({name: c.name, curr, prev, status: c.status});
+    rows.push({name: c.name, oid: c.oid, curr, prev, status: c.status});
     if (curr.installs != null) totalInst += curr.installs;
     if (curr.spend != null) totalSpend += curr.spend;
     if (curr.roasD0 != null) { roasD0Sum += curr.roasD0; roasCount++; }
     if (curr.roasD7 != null) roasD7Sum += curr.roasD7;
   });
+
+  // Sort rows
+  if (weeklySort.col) {
+    rows.sort((a, b) => {
+      if (!a.curr && !b.curr) return 0;
+      if (!a.curr) return 1;
+      if (!b.curr) return -1;
+      const getVal = r => {
+        if (weeklySort.col === 'installs') return r.curr.installs ?? -Infinity;
+        if (weeklySort.col === 'spend')    return r.curr.spend    ?? -Infinity;
+        if (weeklySort.col === 'roasD0')   return r.curr.roasD0   ?? -Infinity;
+        if (weeklySort.col === 'roasD7')   return r.curr.roasD7   ?? -Infinity;
+        return 0;
+      };
+      return weeklySort.asc ? getVal(a) - getVal(b) : getVal(b) - getVal(a);
+    });
+  }
 
   document.getElementById('weekly-summary').innerHTML = `
     <div class="mcard"><div class="mcard-label">Total installs</div><div class="mcard-val">${fmtInt(totalInst)}</div></div>
@@ -741,18 +793,36 @@ function renderWeekly() {
   `;
 
   document.getElementById('weekly-table').innerHTML = rows.map(r => {
-    if (r.err) return `<tr><td>${r.name.replace(/\[CN\]\s*/,'')}</td><td colspan="4" class="err-cell">Error: ${r.err}</td></tr>`;
-    if (r.nodata) return `<tr><td style="color:var(--text3)">${r.name.replace(/\[CN\]\s*/,'')}</td><td colspan="4" style="color:var(--text3);font-size:11px;text-align:center">no data for this week</td></tr>`;
+    if (r.err) return `<tr><td>${r.name.replace(/\[CN\]\s*/,'')}</td><td></td><td colspan="4" class="err-cell">Error: ${r.err}</td></tr>`;
+    if (r.nodata) return `<tr><td style="color:var(--text3)">${r.name.replace(/\[CN\]\s*/,'')}</td><td></td><td colspan="4" style="color:var(--text3);font-size:11px;text-align:center">no data for this week</td></tr>`;
     const {curr, prev} = r;
     const pausedBadge = r.status === 'Paused' ? ' <span class="badge badge-amber">Paused</span>' : '';
     return `<tr>
       <td title="${r.name}">${r.name.replace(/\[CN\]\s*/,'')}${pausedBadge}</td>
+      <td style="font-size:11px;color:var(--text3)">${r.oid || ''}</td>
       <td>${metricCell(curr.installs, prev?.installs, fmtInt)}</td>
       <td>${metricCell(curr.spend, prev?.spend, fmt$)}</td>
       <td>${metricCell(curr.roasD0, prev?.roasD0, v => p(v)+'%')}</td>
       <td>${metricCell(curr.roasD7, prev?.roasD7, v => p(v)+'%')}</td>
     </tr>`;
-  }).join('') || '<tr class="empty-row"><td colspan="5">No data for this week</td></tr>';
+  }).join('') || '<tr class="empty-row"><td colspan="6">No data for this week</td></tr>';
+}
+
+
+/* ── sorting ── */
+let dailySort = {col: null, asc: false};
+let weeklySort = {col: null, asc: false};
+
+function sortDaily(col) {
+  if (dailySort.col === col) { dailySort.asc = !dailySort.asc; }
+  else { dailySort.col = col; dailySort.asc = false; }
+  renderDaily();
+}
+
+function sortWeekly(col) {
+  if (weeklySort.col === col) { weeklySort.asc = !weeklySort.asc; }
+  else { weeklySort.col = col; weeklySort.asc = false; }
+  renderWeekly();
 }
 
 /* ── tab switching ── */
