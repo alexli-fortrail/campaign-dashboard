@@ -176,7 +176,8 @@ button:active { transform: scale(0.98); }
 
 .table-wrap {
   overflow-x: auto;
-  overflow-y: visible;
+  overflow-y: auto;
+  max-height: calc(100vh - 280px);
   border: 0.5px solid var(--border);
   border-radius: var(--radius-lg);
   margin-bottom: 16px;
@@ -196,7 +197,7 @@ th {
   text-align: right;
   white-space: nowrap;
   position: sticky;
-  top: 120px;
+  top: 0;
   z-index: 10;
 }
 th:first-child { text-align: left; }
@@ -927,6 +928,8 @@ function renderWeekly() {
     </tr>`;
   }).join('') || '<tr class="empty-row"><td colspan="6">No data for this week</td></tr>';
 }
+
+
 
 
 /* ── sorting ── */
