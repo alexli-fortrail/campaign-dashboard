@@ -64,6 +64,18 @@ body {
 
 .app { max-width: 1200px; margin: 0 auto; padding: 24px 20px; }
 
+.sticky-top {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 100;
+  padding-top: 24px;
+  margin-top: -24px;
+  padding-bottom: 4px;
+  border-bottom: 0.5px solid var(--border);
+  margin-bottom: 20px;
+}
+
 .header {
   display: flex;
   align-items: center;
@@ -247,7 +259,7 @@ tr:hover td { background: var(--bg2); }
 <body>
 <div class="app">
 
-<div class="header">
+<div class="sticky-top"><div class="header">
   <div class="header-dot"></div>
   <div>
     <div class="header-title">Campaign dashboard</div>
@@ -258,6 +270,7 @@ tr:hover td { background: var(--bg2); }
 <div class="tabs">
   <button class="tab active" onclick="switchTab('daily', this)">Daily</button>
   <button class="tab" onclick="switchTab('weekly', this)">Weekly WoW</button>
+</div>
 </div>
 
 <!-- DAILY PANEL -->
@@ -285,9 +298,13 @@ tr:hover td { background: var(--bg2); }
           <th data-col="roasD7" onclick="sortDaily('roasD7')" style="cursor:pointer">ROAS D7<br><span style="font-weight:400;font-size:10px">DoD ↕</span></th>
           <th data-col="ctcv" onclick="sortDaily('ctcv')" style="cursor:pointer">CTCV ratio ↕</th>
           <th data-col="mkt" onclick="sortDaily('mkt')" style="cursor:pointer">Market share<br><span style="font-weight:400;font-size:10px">DoD ↕</span></th>
+          <th data-col="invalid" onclick="sortDaily('invalid')" style="cursor:pointer">Invalid %<br><span style="font-weight:400;font-size:10px">↕</span></th>
+          <th data-col="dist" onclick="sortDaily('dist')" style="cursor:pointer">Dist. Outlier %<br><span style="font-weight:400;font-size:10px">↕</span></th>
+          <th data-col="pa" onclick="sortDaily('pa')" style="cursor:pointer">PA ratio %<br><span style="font-weight:400;font-size:10px">↕</span></th>
+          <th data-col="ctcvCvr" onclick="sortDaily('ctcvCvr')" style="cursor:pointer">CTCV CVR<br><span style="font-weight:400;font-size:10px">↕</span></th>
         </tr>
       </thead>
-      <tbody id="daily-table"><tr class="empty-row"><td colspan="9">Loading...</td></tr></tbody>
+      <tbody id="daily-table"><tr class="empty-row"><td colspan="13">Loading...</td></tr></tbody>
     </table>
   </div>
   <div class="note" id="daily-note"></div>
@@ -326,6 +343,7 @@ tr:hover td { background: var(--bg2); }
 <script>
 const API_KEY = 'AIzaSyDgiPyNXPTfoaYIP-_MLJ9rpOjTAdrOuJc';
 const MASTER_ID = '1ai4j1BSxcadzhQikugaQukjOdxtgSmj5SAn8snl0V8M';
+const QUALITY_ID = '1LTX1mDnoCg7Nl7pTP4ArmQs50d09CwPsNpflBMmRCsk';
 
 let CAMPAIGNS = []; // dynamically loaded from master sheet
 
@@ -410,9 +428,75 @@ function setStatus(id, msg, loading=false) {
 function setProgress(id, pct) {
   document.getElementById(id).style.width = pct + '%';
 }
+function fmtQuality(v) {
+  if (v == null || isNaN(v)) return '<span style="color:var(--text3)">—</span>';
+  // Values already in % form (e.g. 8.25 = 8.25%)
+  const color = v > 10 ? 'var(--red)' : v > 5 ? 'var(--amber)' : 'var(--text)';
+  return `<span style="color:${color}">${v.toFixed(2)}%</span>`;
+}
+
+function fmtCtcvCvr(v) {
+  if (v == null || isNaN(v)) return '<span style="color:var(--text3)">—</span>';
+  return `<span style="color:var(--text)">${v.toFixed(2)}%</span>`;
+}
+
 function parseNum(s) {
   if (!s || s === '' || s === '-' || s === '—') return null;
   return parseFloat(String(s).replace(/[$,%\s,]/g, '')) || null;
+}
+
+
+/* ── QUALITY DATA ── */
+let qualityMap = {}; // key: "oid_YYYYMMDD"
+
+function fmtDate(dateStr) {
+  // Convert "2026/06/15" → "20260615"
+  return dateStr.replace(/\//g, '');
+}
+
+async function fetchQualityData() {
+  // Fetch the quality sheet — tab gid=1368587554
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${QUALITY_ID}/values/${encodeURIComponent("A1:CZ700")}?key=${API_KEY}`;
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Quality sheet error: ${res.status}`);
+  const json = await res.json();
+  const rows = json.values || [];
+
+  // Find header row — look for row with 'oid' and 'date' columns
+  let headerIdx = -1;
+  let colMap = {};
+  for (let i = 0; i < Math.min(rows.length, 10); i++) {
+    const r = rows[i];
+    const oidCol = r.findIndex(c => c && c.toLowerCase().trim() === 'oid');
+    if (oidCol >= 0) {
+      headerIdx = i;
+      r.forEach((c, ci) => { colMap[c.trim()] = ci; });
+      break;
+    }
+  }
+  if (headerIdx === -1) throw new Error('Quality sheet header not found');
+
+  const oidCol   = colMap['oid']                     ?? -1;
+  const dateCol  = colMap['date']                    ?? -1;
+  const invCol   = colMap['invalid_ratio_mmp']       ?? -1;
+  const distCol  = colMap['distribution_outlier_ratio'] ?? -1;
+  // PA_ratio appears twice; find last occurrence (actual ratio, not score)
+  const paCol    = rows[headerIdx].reduce((last, c, ci) => c.trim() === 'PA_ratio' ? ci : last, -1);
+  const ctcvCvrCol = colMap['CTCV_CVR'] ?? -1;
+
+  qualityMap = {};
+  for (let i = headerIdx + 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (!r[oidCol] || !r[dateCol]) continue;
+    const key = `${r[oidCol].trim()}_${r[dateCol].trim()}`;
+    qualityMap[key] = {
+      invalid: parseNum(r[invCol]),
+      dist:    parseNum(r[distCol]),
+      pa:      parseNum(r[paCol]),
+      ctcvCvr: parseNum(r[ctcvCvrCol]),
+    };
+  }
+  return Object.keys(qualityMap).length;
 }
 
 /* ── Google Sheets API ── */
@@ -428,9 +512,11 @@ async function fetchRange(sheetId, range) {
 let dailyData = null;
 
 async function refreshDaily() {
-  setStatus('daily-status', 'Fetching master sheet...', true);
+  setStatus('daily-status', 'Fetching master sheet + quality data...', true);
+  setProgress('daily-progress', 5);
+  try { await fetchQualityData(); } catch(e) { console.warn('Quality data failed:', e.message); }
   setProgress('daily-progress', 10);
-  document.getElementById('daily-table').innerHTML = '<tr class="empty-row"><td colspan="9">Loading...</td></tr>';
+  document.getElementById('daily-table').innerHTML = '<tr class="empty-row"><td colspan="13">Loading...</td></tr>';
   document.getElementById('daily-summary').innerHTML = '';
 
   try {
@@ -516,7 +602,7 @@ async function refreshDaily() {
     setProgress('daily-progress', 0);
     setStatus('daily-status', `Error: ${e.message}`);
     document.getElementById('daily-table').innerHTML =
-      `<tr class="empty-row"><td colspan="9" style="color:var(--red)">${e.message}</td></tr>`;
+      `<tr class="empty-row"><td colspan="13" style="color:var(--red)">${e.message}</td></tr>`;
   }
 }
 
@@ -538,6 +624,14 @@ function renderDaily() {
         if (dailySort.col === 'roasD7') return c.roasD7[idx] ?? -Infinity;
         if (dailySort.col === 'ctcv')   return c.ctcv[idx]  ?? -Infinity;
         if (dailySort.col === 'mkt')    return c.mkt ? (c.mkt[idx] ?? -Infinity) : -Infinity;
+        if (dailySort.col === 'invalid' || dailySort.col === 'dist' || dailySort.col === 'pa') {
+          const dateStr = dailyData.dates[idx] ? fmtDate(dailyData.dates[idx]) : '';
+          const q = qualityMap[`${c.oid}_${dateStr}`];
+          if (dailySort.col === 'invalid') return q?.invalid ?? -Infinity;
+          if (dailySort.col === 'dist')    return q?.dist    ?? -Infinity;
+          if (dailySort.col === 'pa')      return q?.pa      ?? -Infinity;
+          if (dailySort.col === 'ctcvCvr') return q?.ctcvCvr ?? -Infinity;
+        }
         return 0;
       };
       return dailySort.asc ? getVal(a) - getVal(b) : getVal(b) - getVal(a);
@@ -555,6 +649,11 @@ function renderDaily() {
     const ctcv   = c.ctcv[idx];
     const mkt    = c.mkt ? c.mkt[idx] : null;
     const pMkt   = hasPrev && c.mkt ? c.mkt[prevIdx] : null;
+
+    // Quality data lookup: join by OID + date
+    const dateStr = dailyData.dates[idx] ? fmtDate(dailyData.dates[idx]) : '';
+    const qkey = `${c.oid}_${dateStr}`;
+    const qdata = qualityMap[qkey] || null;
 
     if (spend != null) { totalSpend += spend; spendCount++; }
     if (inst != null)  { totalInst += inst;  instCount++; }
@@ -577,11 +676,15 @@ function renderDaily() {
       <td>${metricCell(rD7, pRD7, v => p(v)+'%', false)}</td>
       <td>${ctcvFlag}</td>
       <td>${metricCell(mkt, pMkt, v => p(v)+'%')}</td>
+      <td>${fmtQuality(qdata?.invalid)}</td>
+      <td>${fmtQuality(qdata?.dist)}</td>
+      <td>${fmtQuality(qdata?.pa)}</td>
+      <td>${fmtCtcvCvr(qdata?.ctcvCvr)}</td>
     </tr>`;
   });
 
   document.getElementById('daily-table').innerHTML = rows.join('') ||
-    '<tr class="empty-row"><td colspan="9">No campaigns found</td></tr>';
+    '<tr class="empty-row"><td colspan="13">No campaigns found</td></tr>';
 
   document.getElementById('daily-summary').innerHTML = `
     <div class="mcard"><div class="mcard-label">Total spend</div><div class="mcard-val">${fmt$(totalSpend)}</div></div>
