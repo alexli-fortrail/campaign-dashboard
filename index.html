@@ -335,7 +335,7 @@ tr:hover .freeze-1 { background: var(--bg2); }
     <div class="toolbar-spacer"></div>
     <button onclick="refreshWeekly()">↻ Refresh</button>
   </div>
-  <div class="status-bar" id="weekly-status"><span class="spinner"></span> Loading...</div>
+  <div class="status-bar" id="weekly-status">Click ↻ Refresh to load weekly data</div>
   <div class="progress-bar-wrap"><div class="progress-bar" id="weekly-progress"></div></div>
   <div class="summary-grid" id="weekly-summary"></div>
   <div class="table-wrap">
@@ -350,7 +350,7 @@ tr:hover .freeze-1 { background: var(--bg2); }
           <th data-col="roasD7" onclick="sortWeekly('roasD7')" style="cursor:pointer">ROAS D7<br><span style="font-weight:400;font-size:10px">WoW ↕</span></th>
         </tr>
       </thead>
-      <tbody id="weekly-table"><tr class="empty-row"><td colspan="6">Loading...</td></tr></tbody>
+      <tbody id="weekly-table"><tr class="empty-row"><td colspan="6" style="color:var(--text3)">Click ↻ Refresh to load weekly data</td></tr></tbody>
     </table>
   </div>
   <div class="note" id="weekly-note"></div>
@@ -473,8 +473,8 @@ function fmtDate(dateStr) {
 }
 
 async function fetchQualityData() {
-  // Fetch the quality sheet — tab gid=1368587554
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${QUALITY_ID}/values/${encodeURIComponent("A1:CZ700")}?key=${API_KEY}`;
+  // Fetch the quality sheet (importranged copy, gid=0)
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${QUALITY_ID}/values/A1:CZ700?key=${API_KEY}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Quality sheet error: ${res.status}`);
   const json = await res.json();
@@ -514,7 +514,9 @@ async function fetchQualityData() {
       ctcvCvr: parseNum(r[ctcvCvrCol]),
     };
   }
-  return Object.keys(qualityMap).length;
+  const keys = Object.keys(qualityMap);
+  console.log('Quality map sample keys:', keys.slice(0,3));
+  return keys.length;
 }
 
 /* ── Google Sheets API ── */
@@ -532,7 +534,13 @@ let dailyData = null;
 async function refreshDaily() {
   setStatus('daily-status', 'Fetching master sheet + quality data...', true);
   setProgress('daily-progress', 5);
-  try { await fetchQualityData(); } catch(e) { console.warn('Quality data failed:', e.message); }
+  try {
+    const qCount = await fetchQualityData();
+    console.log(`Quality data loaded: ${qCount} records`);
+  } catch(e) {
+    console.error('Quality data failed:', e.message);
+    setStatus('daily-status', `Warning: quality data unavailable (${e.message}) — other metrics still loading`, true);
+  }
   setProgress('daily-progress', 10);
   document.getElementById('daily-table').innerHTML = '<tr class="empty-row"><td colspan="13">Loading...</td></tr>';
   document.getElementById('daily-summary').innerHTML = '';
@@ -716,7 +724,7 @@ function renderDaily() {
 let weeklyData = {};
 let availableWeeks = [];
 
-async function fetchWithRetry(url, retries=2, delay=1000) {
+async function fetchWithRetry(url, retries=3, delay=2000) {
   for (let i = 0; i <= retries; i++) {
     const res = await fetch(url);
     if (res.status === 429 && i < retries) {
@@ -813,8 +821,8 @@ async function refreshWeekly() {
 
   setStatus('weekly-status', `Found ${CAMPAIGNS.length} campaigns, fetching weekly data...`, true);
   let done = 0;
-  // Fetch in batches of 4 with delay to avoid 429 rate limits
-  const batchSize = 4;
+  // Fetch in batches of 2 with delay to avoid 429 rate limits
+  const batchSize = 2;
   for (let i = 0; i < CAMPAIGNS.length; i += batchSize) {
     const batch = CAMPAIGNS.slice(i, i + batchSize);
     await Promise.allSettled(batch.map(async c => {
@@ -828,7 +836,7 @@ async function refreshWeekly() {
       setProgress('weekly-progress', Math.round((done / CAMPAIGNS.length) * 100));
       setStatus('weekly-status', `Loaded ${done}/${CAMPAIGNS.length} campaigns...`, true);
     }));
-    if (i + batchSize < CAMPAIGNS.length) await new Promise(r => setTimeout(r, 800));
+    if (i + batchSize < CAMPAIGNS.length) await new Promise(r => setTimeout(r, 2000));
   }
 
   // Collect all unique week ranges
@@ -960,7 +968,6 @@ function switchTab(tab, btn) {
 (async () => {
   try { await loadCampaigns(); } catch(e) {}
   refreshDaily();
-  refreshWeekly();
 })();
 </script>
 </body>
