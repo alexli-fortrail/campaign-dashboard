@@ -254,6 +254,21 @@ tr:hover td { background: var(--bg2); }
   transition: width 0.3s ease;
   width: 0%;
 }
+/* Frozen first 3 columns */
+.freeze-1 {
+  position: sticky;
+  left: 0;
+  min-width: 180px;
+  background: var(--bg);
+  z-index: 2;
+  box-shadow: 2px 0 6px -2px rgba(0,0,0,0.12);
+}
+th.freeze-1 {
+  z-index: 11;
+  background: var(--bg2);
+}
+tr:hover .freeze-1 { background: var(--bg2); }
+
 </style>
 </head>
 <body>
@@ -289,7 +304,7 @@ tr:hover td { background: var(--bg2); }
     <table>
       <thead>
         <tr>
-          <th style="min-width:180px" data-col="name">Campaign <span class="sort-icon">↕</span></th>
+          <th class="freeze-1" data-col="name">Campaign <span class="sort-icon">↕</span></th>
           <th style="min-width:120px">OID</th>
           <th>Status</th>
           <th data-col="spend" onclick="sortDaily('spend')" style="cursor:pointer">Spend<br><span style="font-weight:400;font-size:10px">DoD ↕</span></th>
@@ -324,7 +339,7 @@ tr:hover td { background: var(--bg2); }
     <table>
       <thead>
         <tr>
-          <th style="min-width:180px">Campaign</th>
+          <th class="freeze-1">Campaign</th>
           <th style="min-width:120px">OID</th>
           <th data-col="installs" onclick="sortWeekly('installs')" style="cursor:pointer">Installs<br><span style="font-weight:400;font-size:10px">WoW ↕</span></th>
           <th data-col="spend" onclick="sortWeekly('spend')" style="cursor:pointer">Spend<br><span style="font-weight:400;font-size:10px">WoW ↕</span></th>
@@ -667,7 +682,7 @@ function renderDaily() {
       : `${p(ctcv) === '—' ? '—' : p(ctcv) + '%'}`;
 
     return `<tr>
-      <td title="${c.name}">${c.name.replace(/\[CN\]\s*/,'')}</td>
+      <td class="freeze-1" title="${c.name}">${c.name.replace(/\[CN\]\s*/,'')}</td>
       <td style="font-size:11px;color:var(--text3)">${c.oid}</td>
       <td>${statusBadge}</td>
       <td>${metricCell(spend, pSpend, fmt$, false)}</td>
@@ -896,12 +911,12 @@ function renderWeekly() {
   `;
 
   document.getElementById('weekly-table').innerHTML = rows.map(r => {
-    if (r.err) return `<tr><td>${r.name.replace(/\[CN\]\s*/,'')}</td><td></td><td colspan="4" class="err-cell">Error: ${r.err}</td></tr>`;
-    if (r.nodata) return `<tr><td style="color:var(--text3)">${r.name.replace(/\[CN\]\s*/,'')}</td><td></td><td colspan="4" style="color:var(--text3);font-size:11px;text-align:center">no data for this week</td></tr>`;
+    if (r.err) return `<tr><td class="freeze-1">${r.name.replace(/\[CN\]\s*/,'')}</td><td></td><td colspan="4" class="err-cell">Error: ${r.err}</td></tr>`;
+    if (r.nodata) return `<tr><td class="freeze-1" style="color:var(--text3)">${r.name.replace(/\[CN\]\s*/,'')}</td><td></td><td colspan="4" style="color:var(--text3);font-size:11px;text-align:center">no data for this week</td></tr>`;
     const {curr, prev} = r;
     const pausedBadge = r.status === 'Paused' ? ' <span class="badge badge-amber">Paused</span>' : '';
     return `<tr>
-      <td title="${r.name}">${r.name.replace(/\[CN\]\s*/,'')}${pausedBadge}</td>
+      <td class="freeze-1" title="${r.name}">${r.name.replace(/\[CN\]\s*/,'')}${pausedBadge}</td>
       <td style="font-size:11px;color:var(--text3)">${r.oid || ''}</td>
       <td>${metricCell(curr.installs, prev?.installs, fmtInt)}</td>
       <td>${metricCell(curr.spend, prev?.spend, fmt$)}</td>
