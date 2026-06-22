@@ -546,42 +546,31 @@ async function refreshDaily() {
   document.getElementById('daily-summary').innerHTML = '';
 
   try {
-    const ranges = [
-      'A1:C500',
-      'G1:G500',
-      'AB1:AE500',
-      'AQ1:AT500',
-      'BR1:BU500',
-      'CC1:CF500',
-      'CH1:CK500',
-      'T1:Z500',
-    ];
-
     setProgress('daily-progress', 30);
-    const batchUrl = `https://sheets.googleapis.com/v4/spreadsheets/${MASTER_ID}/values:batchGet?key=${API_KEY}&` +
-      ranges.map(r => `ranges=${encodeURIComponent(r)}`).join('&');
-    const res = await fetch(batchUrl);
+    // Single wide range to keep row indices aligned
+    const singleUrl = `https://sheets.googleapis.com/v4/spreadsheets/${MASTER_ID}/values/A1:CK500?key=${API_KEY}&valueRenderOption=UNFORMATTED_VALUE`;
+    const res = await fetch(singleUrl);
     if (!res.ok) throw new Error(`Sheets API error: ${res.status}`);
     const json = await res.json();
-    const vr = json.valueRanges;
+    const allRows = json.values || [];
 
     setProgress('daily-progress', 70);
 
-    const nameRows  = vr[0].values || [];
-    const amRows    = vr[1].values || [];
-    const roasD0Rows= vr[2].values || [];
-    const roasD7Rows= vr[3].values || [];
-    const spendRows = vr[4].values || [];
-    const instRows  = vr[5].values || [];
-    const ctcvRows  = vr[6].values || [];
-    const mktRows   = vr[7].values || [];
+    // Column indices (0-based)
+    const C_NAME=0, C_OID=1, C_STATUS=2, C_AM=6;
+    const C_MKT=19;
+    const C_ROAS_D0=27, C_ROAS_D7=42;
+    const C_SPEND=69, C_INST=80, C_CTCV=85;
 
-    // Find the date row by scanning for YYYY/MM/DD pattern
+    // Helper: get 4 values starting at col c for a row
+    const g4 = (row, c) => [0,1,2,3].map(i => parseNum(row[c+i]));
+
+    // Find the date row by scanning for YYYY/MM/DD pattern in spend col
     let dateRow = [];
-    for (let i = 0; i < Math.min((spendRows || []).length, 5); i++) {
-      const row = spendRows[i] || [];
-      if (row.some(c => c && /\d{4}\/\d{2}\/\d{2}/.test(c))) {
-        dateRow = row;
+    for (let i = 0; i < Math.min(allRows.length, 5); i++) {
+      const row = allRows[i] || [];
+      if (row[C_SPEND] && /\d{4}\/\d{2}\/\d{2}/.test(String(row[C_SPEND]))) {
+        dateRow = [row[C_SPEND], row[C_SPEND+1], row[C_SPEND+2], row[C_SPEND+3]];
         break;
       }
     }
@@ -589,24 +578,23 @@ async function refreshDaily() {
 
     dailyData = {dates, campaigns: []};
 
-    for (let i = 2; i < nameRows.length; i++) {
-      const nameRow = nameRows[i] || [];
-      const amRow = amRows[i] || [];
-      const name = nameRow[0] || '';
-      const oid  = nameRow[1] || '';
-      const status = nameRow[2] || '';
-      const am = amRow[0] || '';
+    for (let i = 2; i < allRows.length; i++) {
+      const row = allRows[i] || [];
+      const name   = String(row[C_NAME]   || '').trim();
+      const oid    = String(row[C_OID]    || '').trim();
+      const status = String(row[C_STATUS] || '').trim();
+      const am     = String(row[C_AM]     || '').trim();
 
       if (!name || !am.toLowerCase().includes('alex.li')) continue;
-      const instToday = parseNum((instRows[i] || [])[0]);
+      const instToday = parseNum(row[C_INST]);
       if (status !== 'Running' && !(instToday > 0)) continue;
 
-      const spend  = (spendRows[i] || []).slice(0, 4).map(parseNum);
-      const inst   = (instRows[i] || []).slice(0, 4).map(parseNum);
-      const roasD0 = (roasD0Rows[i] || []).slice(0, 4).map(parseNum);
-      const roasD7 = (roasD7Rows[i] || []).slice(0, 4).map(parseNum);
-      const ctcv   = (ctcvRows[i] || []).slice(0, 4).map(parseNum);
-      const mkt    = (mktRows[i]  || []).slice(0, 4).map(parseNum);
+      const spend  = g4(row, C_SPEND);
+      const inst   = g4(row, C_INST);
+      const roasD0 = g4(row, C_ROAS_D0);
+      const roasD7 = g4(row, C_ROAS_D7);
+      const ctcv   = g4(row, C_CTCV);
+      const mkt    = g4(row, C_MKT);
 
       dailyData.campaigns.push({name, oid, status, spend, inst, roasD0, roasD7, ctcv, mkt});
     }
