@@ -548,7 +548,7 @@ async function refreshDaily() {
   try {
     setProgress('daily-progress', 30);
     // Single wide range to keep row indices aligned
-    const singleUrl = `https://sheets.googleapis.com/v4/spreadsheets/${MASTER_ID}/values/A1:CK500?key=${API_KEY}&valueRenderOption=UNFORMATTED_VALUE`;
+    const singleUrl = `https://sheets.googleapis.com/v4/spreadsheets/${MASTER_ID}/values/A1:CK500?key=${API_KEY}`;
     const res = await fetch(singleUrl);
     if (!res.ok) throw new Error(`Sheets API error: ${res.status}`);
     const json = await res.json();
