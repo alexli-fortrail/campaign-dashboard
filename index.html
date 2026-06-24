@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Campaign Dashboard — alex.li</title>
+<title>Campaign Dashboard</title>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -272,6 +272,49 @@ th.freeze-1 {
 }
 tr:hover .freeze-1 { background: var(--bg2); }
 
+
+/* Settings panel */
+.settings-panel { max-width: 560px; }
+.settings-group { margin-bottom: 20px; }
+.settings-label { font-size: 12px; font-weight: 500; color: var(--text2); margin-bottom: 6px; display: block; }
+.settings-hint { font-size: 11px; color: var(--text3); margin-top: 4px; }
+.settings-input {
+  width: 100%;
+  font-size: 13px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  border: 0.5px solid var(--border2);
+  background: var(--bg);
+  color: var(--text);
+  font-family: monospace;
+}
+.settings-input:focus { outline: none; border-color: var(--blue); }
+.settings-save {
+  font-size: 13px;
+  padding: 8px 20px;
+  border-radius: var(--radius);
+  border: none;
+  background: var(--text);
+  color: var(--bg);
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 500;
+}
+.settings-save:hover { opacity: 0.85; }
+.settings-saved { font-size: 12px; color: var(--green); margin-left: 10px; opacity: 0; transition: opacity 0.3s; }
+.settings-saved.show { opacity: 1; }
+.settings-divider { border: none; border-top: 0.5px solid var(--border); margin: 20px 0; }
+.first-run-banner {
+  background: var(--amber-bg);
+  color: var(--amber-text);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  font-size: 13px;
+  margin-bottom: 20px;
+  display: none;
+}
+.first-run-banner.show { display: block; }
+
 </style>
 </head>
 <body>
@@ -281,13 +324,14 @@ tr:hover .freeze-1 { background: var(--bg2); }
   <div class="header-dot"></div>
   <div>
     <div class="header-title">Campaign dashboard</div>
-    <div class="header-sub">alex.li · AIBID · Running campaigns</div>
+    <div class="header-sub" id="header-sub">Loading...</div>
   </div>
 </div>
 
 <div class="tabs">
   <button class="tab active" onclick="switchTab('daily', this)">Daily</button>
   <button class="tab" onclick="switchTab('weekly', this)">Weekly WoW</button>
+  <button class="tab" onclick="switchTab('settings', this)" style="margin-left:auto">⚙ Settings</button>
 </div>
 </div>
 
@@ -316,13 +360,14 @@ tr:hover .freeze-1 { background: var(--bg2); }
           <th data-col="roasD7" onclick="sortDaily('roasD7')" style="cursor:pointer">ROAS D7<br><span style="font-weight:400;font-size:10px">DoD ↕</span></th>
           <th data-col="ctcv" onclick="sortDaily('ctcv')" style="cursor:pointer">CTCV ratio ↕</th>
           <th data-col="mkt" onclick="sortDaily('mkt')" style="cursor:pointer">Market share<br><span style="font-weight:400;font-size:10px">DoD ↕</span></th>
-          <th data-col="invalid" onclick="sortDaily('invalid')" style="cursor:pointer">Invalid %<br><span style="font-weight:400;font-size:10px">↕</span></th>
+          <th data-col="invalid" onclick="sortDaily('invalid')" style="cursor:pointer">Invalid % (MMP)<br><span style="font-weight:400;font-size:10px">↕</span></th>
+          <th data-col="invAppier" onclick="sortDaily('invAppier')" style="cursor:pointer">Invalid % (Appier)<br><span style="font-weight:400;font-size:10px">↕</span></th>
           <th data-col="dist" onclick="sortDaily('dist')" style="cursor:pointer">Dist. Outlier %<br><span style="font-weight:400;font-size:10px">↕</span></th>
           <th data-col="pa" onclick="sortDaily('pa')" style="cursor:pointer">PA ratio %<br><span style="font-weight:400;font-size:10px">↕</span></th>
           <th data-col="ctcvCvr" onclick="sortDaily('ctcvCvr')" style="cursor:pointer">CTCV CVR<br><span style="font-weight:400;font-size:10px">↕</span></th>
         </tr>
       </thead>
-      <tbody id="daily-table"><tr class="empty-row"><td colspan="13">Loading...</td></tr></tbody>
+      <tbody id="daily-table"><tr class="empty-row"><td colspan="14">Loading...</td></tr></tbody>
     </table>
   </div>
   <div class="note" id="daily-note"></div>
@@ -356,18 +401,130 @@ tr:hover .freeze-1 { background: var(--bg2); }
   <div class="note" id="weekly-note"></div>
 </div>
 
+<!-- SETTINGS PANEL -->
+<div id="panel-settings" class="panel">
+  <div class="settings-panel">
+    <div class="first-run-banner" id="first-run-banner">
+      ⚠ Welcome! Please configure your settings before using the dashboard.
+    </div>
+
+    <div class="settings-group">
+      <label class="settings-label">AM Email</label>
+      <input class="settings-input" id="cfg-am" type="text" placeholder="e.g. alex.li" />
+      <div class="settings-hint">Your email prefix (without @appier.com) — used to filter campaigns assigned to you.</div>
+    </div>
+
+    <div class="settings-group">
+      <label class="settings-label">Google Sheets API Key</label>
+      <input class="settings-input" id="cfg-apikey" type="text" placeholder="AIzaSy..." />
+      <div class="settings-hint">Create a read-only API key in <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color:var(--blue)">Google Cloud Console</a> with Sheets API enabled. Set Application Restrictions to None.</div>
+    </div>
+
+    <hr class="settings-divider">
+
+    <div class="settings-group">
+      <label class="settings-label">Master Registry Sheet URL</label>
+      <input class="settings-input" id="cfg-master" type="text" placeholder="https://docs.google.com/spreadsheets/d/..." />
+      <div class="settings-hint">The main campaign registry sheet. Must be shared as "Anyone with the link → Viewer".</div>
+    </div>
+
+    <div class="settings-group">
+      <label class="settings-label">Quality Data Sheet URL</label>
+      <input class="settings-input" id="cfg-quality" type="text" placeholder="https://docs.google.com/spreadsheets/d/..." />
+      <div class="settings-hint">The quality metrics sheet (invalid ratio, PA ratio, etc). Must be shared as "Anyone with the link → Viewer". Leave blank to disable quality metrics.</div>
+    </div>
+
+    <div class="settings-group">
+      <label class="settings-label">AM Email Column (Master Sheet)</label>
+      <input class="settings-input" id="cfg-amcol" type="text" placeholder="G" style="width:80px;font-family:monospace" />
+      <div class="settings-hint">Column letter in the master sheet that contains the AM email. Default: G</div>
+    </div>
+
+    <button class="settings-save" onclick="saveSettings()">Save settings</button>
+    <span class="settings-saved" id="settings-saved">✓ Saved</span>
+  </div>
+</div>
+
+
 </div>
 
 <script>
-const API_KEY = 'AIzaSyDgiPyNXPTfoaYIP-_MLJ9rpOjTAdrOuJc';
-const MASTER_ID = '1ai4j1BSxcadzhQikugaQukjOdxtgSmj5SAn8snl0V8M';
-const QUALITY_ID = '1LTX1mDnoCg7Nl7pTP4ArmQs50d09CwPsNpflBMmRCsk';
+// ── Config — loaded from localStorage ──
+const DEFAULT_CONFIG = {
+  apiKey:   '',
+  am:       '',
+  masterId: '',
+  qualityId:'',
+  amCol:    'G',
+};
+
+function extractSheetId(urlOrId) {
+  if (!urlOrId) return '';
+  const m = urlOrId.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : urlOrId.trim();
+}
+
+function loadConfig() {
+  try {
+    const saved = localStorage.getItem('dashConfig');
+    return saved ? {...DEFAULT_CONFIG, ...JSON.parse(saved)} : {...DEFAULT_CONFIG};
+  } catch(e) { return {...DEFAULT_CONFIG}; }
+}
+
+function saveSettings() {
+  const cfg = {
+    apiKey:    document.getElementById('cfg-apikey').value.trim(),
+    am:        document.getElementById('cfg-am').value.trim(),
+    masterId:  extractSheetId(document.getElementById('cfg-master').value.trim()),
+    qualityId: extractSheetId(document.getElementById('cfg-quality').value.trim()),
+    amCol:     document.getElementById('cfg-amcol').value.trim().toUpperCase() || 'G',
+  };
+  localStorage.setItem('dashConfig', JSON.stringify(cfg));
+  const saved = document.getElementById('settings-saved');
+  saved.classList.add('show');
+  setTimeout(() => saved.classList.remove('show'), 2000);
+  updateHeaderSub();
+}
+
+function updateHeaderSub() {
+  const cfg = loadConfig();
+  const sub = document.getElementById('header-sub');
+  if (sub) sub.textContent = (cfg.am || 'Not configured') + ' · AIBID · Running campaigns';
+}
+
+function populateSettingsForm() {
+  const cfg = loadConfig();
+  document.getElementById('cfg-apikey').value = cfg.apiKey || '';
+  document.getElementById('cfg-am').value     = cfg.am || '';
+  document.getElementById('cfg-master').value = cfg.masterId ? 'https://docs.google.com/spreadsheets/d/' + cfg.masterId : '';
+  document.getElementById('cfg-quality').value= cfg.qualityId ? 'https://docs.google.com/spreadsheets/d/' + cfg.qualityId : '';
+  document.getElementById('cfg-amcol').value  = cfg.amCol || 'G';
+}
+
+function checkFirstRun() {
+  const cfg = loadConfig();
+  const isNew = !cfg.apiKey || !cfg.am || !cfg.masterId;
+  document.getElementById('first-run-banner').classList.toggle('show', isNew);
+  return isNew;
+}
+
+// Dynamic getters — always read from current config
+function getApiKey()   { return loadConfig().apiKey; }
+function getMasterId() { return loadConfig().masterId; }
+function getQualityId(){ return loadConfig().qualityId; }
+function getAm()       { return loadConfig().am; }
+function getAmColIdx() {
+  const col = loadConfig().amCol || 'G';
+  let idx = 0;
+  for (const c of col.toUpperCase()) idx = idx * 26 + (c.charCodeAt(0) - 64);
+  return idx - 1;
+}
 
 let CAMPAIGNS = []; // dynamically loaded from master sheet
 
 async function loadCampaigns() {
   // Fetch cols A (name), C (status), E (gsheet link), G (AM) from master sheet
-  const batchUrl = `https://sheets.googleapis.com/v4/spreadsheets/${MASTER_ID}/values:batchGet?key=${API_KEY}` +
+  const batchUrl = `https://sheets.googleapis.com/v4/spreadsheets/${getMasterId()}/values:batchGet?key=${getApiKey()}` +
     `&ranges=${encodeURIComponent('A1:B500')}` +
     `&ranges=${encodeURIComponent('C1:C500')}` +
     `&ranges=${encodeURIComponent('E1:E500')}` +
@@ -389,7 +546,7 @@ async function loadCampaigns() {
     const link   = (linkRows[i]   || [])[0] || '';
     const am     = (amRows[i]     || [])[0] || '';
     if (!name) continue;
-    if (!am.toLowerCase().includes('alex.li')) continue;
+    if (!am.toLowerCase().includes(getAm().toLowerCase())) continue;
     if (status !== 'Running' && status !== 'Paused') continue;
     if (!link.startsWith('https://docs.google.com/spreadsheets/d/')) continue;
     const fileId = link.split('/d/')[1]?.split('/')[0];
@@ -474,7 +631,7 @@ function fmtDate(dateStr) {
 
 async function fetchQualityData() {
   // Fetch the quality sheet (importranged copy, gid=0)
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${QUALITY_ID}/values/A1:CZ700?key=${API_KEY}`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${getQualityId()}/values/A1:CZ700?key=${getApiKey()}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Quality sheet error: ${res.status}`);
   const json = await res.json();
@@ -500,7 +657,9 @@ async function fetchQualityData() {
   const distCol  = colMap['distribution_outlier_ratio'] ?? -1;
   // PA_ratio appears twice; find last occurrence (actual ratio, not score)
   const paCol    = rows[headerIdx].reduce((last, c, ci) => c.trim() === 'PA_ratio' ? ci : last, -1);
-  const ctcvCvrCol = colMap['CTCV_CVR'] ?? -1;
+  const ctcvCvrCol  = colMap['CTCV_CVR'] ?? -1;
+  const ctcvRatioCol  = colMap['CTCV_ratio_appier_valid'] ?? -1;
+  const invAppierCol  = colMap['invalid_ratio_appier'] ?? -1;
 
   qualityMap = {};
   for (let i = headerIdx + 1; i < rows.length; i++) {
@@ -508,10 +667,12 @@ async function fetchQualityData() {
     if (!r[oidCol] || !r[dateCol]) continue;
     const key = `${r[oidCol].trim()}_${r[dateCol].trim()}`;
     qualityMap[key] = {
-      invalid: parseNum(r[invCol]),
-      dist:    parseNum(r[distCol]),
-      pa:      parseNum(r[paCol]),
-      ctcvCvr: parseNum(r[ctcvCvrCol]),
+      invalid:   parseNum(r[invCol]),
+      dist:      parseNum(r[distCol]),
+      pa:        parseNum(r[paCol]),
+      ctcvCvr:   parseNum(r[ctcvCvrCol]),
+      ctcvRatio:  parseNum(r[ctcvRatioCol]),
+      invAppier:  parseNum(r[invAppierCol]),
     };
   }
   const keys = Object.keys(qualityMap);
@@ -521,7 +682,7 @@ async function fetchQualityData() {
 
 /* ── Google Sheets API ── */
 async function fetchRange(sheetId, range) {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(range)}?key=${API_KEY}`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(range)}?key=${getApiKey()}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const data = await res.json();
@@ -532,23 +693,29 @@ async function fetchRange(sheetId, range) {
 let dailyData = null;
 
 async function refreshDaily() {
+  if (!getApiKey() || !getMasterId() || !getAm()) {
+    setStatus('daily-status', '⚠ Please configure your settings first (click ⚙ Settings tab)');
+    return;
+  }
   setStatus('daily-status', 'Fetching master sheet + quality data...', true);
   setProgress('daily-progress', 5);
-  try {
-    const qCount = await fetchQualityData();
+  if (getQualityId()) {
+    try {
+      const qCount = await fetchQualityData();
     console.log(`Quality data loaded: ${qCount} records`);
-  } catch(e) {
-    console.error('Quality data failed:', e.message);
-    setStatus('daily-status', `Warning: quality data unavailable (${e.message}) — other metrics still loading`, true);
+    } catch(e) {
+      console.error('Quality data failed:', e.message);
+      setStatus('daily-status', `Warning: quality data unavailable (${e.message}) — other metrics still loading`, true);
+    }
   }
   setProgress('daily-progress', 10);
-  document.getElementById('daily-table').innerHTML = '<tr class="empty-row"><td colspan="13">Loading...</td></tr>';
+  document.getElementById('daily-table').innerHTML = '<tr class="empty-row"><td colspan="14">Loading...</td></tr>';
   document.getElementById('daily-summary').innerHTML = '';
 
   try {
     setProgress('daily-progress', 30);
     // Single wide range to keep row indices aligned
-    const singleUrl = `https://sheets.googleapis.com/v4/spreadsheets/${MASTER_ID}/values/A1:CK500?key=${API_KEY}`;
+    const singleUrl = `https://sheets.googleapis.com/v4/spreadsheets/${getMasterId()}/values/A1:CK500?key=${getApiKey()}`;
     const res = await fetch(singleUrl);
     if (!res.ok) throw new Error(`Sheets API error: ${res.status}`);
     const json = await res.json();
@@ -560,7 +727,7 @@ async function refreshDaily() {
     const C_NAME=0, C_OID=1, C_STATUS=2, C_AM=6;
     const C_MKT=19;
     const C_ROAS_D0=27, C_ROAS_D7=42;
-    const C_SPEND=69, C_INST=80, C_CTCV=85;
+    const C_SPEND=69, C_INST=80;
 
     // Helper: get 4 values starting at col c for a row
     const g4 = (row, c) => [0,1,2,3].map(i => parseNum(row[c+i]));
@@ -585,7 +752,7 @@ async function refreshDaily() {
       const status = String(row[C_STATUS] || '').trim();
       const am     = String(row[C_AM]     || '').trim();
 
-      if (!name || !am.toLowerCase().includes('alex.li')) continue;
+      if (!name || !am.toLowerCase().includes(getAm().toLowerCase())) continue;
       const instToday = parseNum(row[C_INST]);
       if (status !== 'Running' && !(instToday > 0)) continue;
 
@@ -593,10 +760,9 @@ async function refreshDaily() {
       const inst   = g4(row, C_INST);
       const roasD0 = g4(row, C_ROAS_D0);
       const roasD7 = g4(row, C_ROAS_D7);
-      const ctcv   = g4(row, C_CTCV);
       const mkt    = g4(row, C_MKT);
 
-      dailyData.campaigns.push({name, oid, status, spend, inst, roasD0, roasD7, ctcv, mkt});
+      dailyData.campaigns.push({name, oid, status, spend, inst, roasD0, roasD7, mkt});
     }
 
     setProgress('daily-progress', 100);
@@ -616,7 +782,7 @@ async function refreshDaily() {
     setProgress('daily-progress', 0);
     setStatus('daily-status', `Error: ${e.message}`);
     document.getElementById('daily-table').innerHTML =
-      `<tr class="empty-row"><td colspan="13" style="color:var(--red)">${e.message}</td></tr>`;
+      `<tr class="empty-row"><td colspan="14" style="color:var(--red)">${e.message}</td></tr>`;
   }
 }
 
@@ -636,13 +802,14 @@ function renderDaily() {
         if (dailySort.col === 'inst')   return c.inst[idx]  ?? -Infinity;
         if (dailySort.col === 'roasD0') return c.roasD0[idx] ?? -Infinity;
         if (dailySort.col === 'roasD7') return c.roasD7[idx] ?? -Infinity;
-        if (dailySort.col === 'ctcv')   return c.ctcv[idx]  ?? -Infinity;
+        if (dailySort.col === 'ctcv') { const dateStr = dailyData.dates[idx] ? fmtDate(dailyData.dates[idx]) : ''; const q = qualityMap[`${c.oid}_${dateStr}`]; return q?.ctcvRatio ?? -Infinity; }
         if (dailySort.col === 'mkt')    return c.mkt ? (c.mkt[idx] ?? -Infinity) : -Infinity;
         if (dailySort.col === 'invalid' || dailySort.col === 'dist' || dailySort.col === 'pa') {
           const dateStr = dailyData.dates[idx] ? fmtDate(dailyData.dates[idx]) : '';
           const q = qualityMap[`${c.oid}_${dateStr}`];
           if (dailySort.col === 'invalid') return q?.invalid ?? -Infinity;
           if (dailySort.col === 'dist')    return q?.dist    ?? -Infinity;
+          if (dailySort.col === 'invAppier') return q?.invAppier ?? -Infinity;
           if (dailySort.col === 'pa')      return q?.pa      ?? -Infinity;
           if (dailySort.col === 'ctcvCvr') return q?.ctcvCvr ?? -Infinity;
         }
@@ -660,7 +827,8 @@ function renderDaily() {
     const pRD0   = hasPrev ? c.roasD0[prevIdx] : null;
     const rD7    = c.roasD7[idx];
     const pRD7   = hasPrev ? c.roasD7[prevIdx] : null;
-    const ctcv   = c.ctcv[idx];
+    const ctcv   = qdata ? qdata.ctcvRatio : null;
+    const pCtcv  = null; // CTCV from quality sheet — no DoD comparison
     const mkt    = c.mkt ? c.mkt[idx] : null;
     const pMkt   = hasPrev && c.mkt ? c.mkt[prevIdx] : null;
 
@@ -676,9 +844,9 @@ function renderDaily() {
       ? '<span class="badge badge-green">Running</span>'
       : `<span class="badge badge-amber">${c.status}</span>`;
 
-    const ctcvFlag = ctcv != null && ctcv < 35
+    const ctcvFlag = ctcv == null ? '—' : ctcv < 35
       ? `<span style="color:var(--red)">${p(ctcv)}%</span>`
-      : `${p(ctcv) === '—' ? '—' : p(ctcv) + '%'}`;
+      : `${p(ctcv)}%`;
 
     return `<tr>
       <td class="freeze-1" title="${c.name}">${c.name.replace(/\[CN\]\s*/,'')}</td>
@@ -691,6 +859,7 @@ function renderDaily() {
       <td>${ctcvFlag}</td>
       <td>${metricCell(mkt, pMkt, v => p(v)+'%')}</td>
       <td>${fmtQuality(qdata?.invalid)}</td>
+      <td>${fmtQuality(qdata?.invAppier)}</td>
       <td>${fmtQuality(qdata?.dist)}</td>
       <td>${fmtQuality(qdata?.pa)}</td>
       <td>${fmtCtcvCvr(qdata?.ctcvCvr)}</td>
@@ -698,7 +867,7 @@ function renderDaily() {
   });
 
   document.getElementById('daily-table').innerHTML = rows.join('') ||
-    '<tr class="empty-row"><td colspan="13">No campaigns found</td></tr>';
+    '<tr class="empty-row"><td colspan="14">No campaigns found</td></tr>';
 
   document.getElementById('daily-summary').innerHTML = `
     <div class="mcard"><div class="mcard-label">Total spend</div><div class="mcard-val">${fmt$(totalSpend)}</div></div>
@@ -724,7 +893,7 @@ async function fetchWithRetry(url, retries=3, delay=2000) {
 }
 
 async function fetchWeeklySheet(campaign) {
-  const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${campaign.id}?key=${API_KEY}&fields=sheets.properties`;
+  const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${campaign.id}?key=${getApiKey()}&fields=sheets.properties`;
   const metaRes = await fetchWithRetry(metaUrl);
   if (!metaRes.ok) throw new Error(`Meta ${metaRes.status}`);
   const meta = await metaRes.json();
@@ -739,7 +908,7 @@ async function fetchWeeklySheet(campaign) {
   // Fetch enough rows to get the weekly cohort table — it's at the bottom
   // Get last 200 rows of the sheet
   const range = `'${tabName}'!A1:Z300`;
-  const valUrl = `https://sheets.googleapis.com/v4/spreadsheets/${campaign.id}/values/${encodeURIComponent(range)}?key=${API_KEY}`;
+  const valUrl = `https://sheets.googleapis.com/v4/spreadsheets/${campaign.id}/values/${encodeURIComponent(range)}?key=${getApiKey()}`;
   const valRes = await fetchWithRetry(valUrl);
   if (!valRes.ok) throw new Error(`Values ${valRes.status}`);
   const valJson = await valRes.json();
@@ -950,12 +1119,24 @@ function switchTab(tab, btn) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById('panel-' + tab).classList.add('active');
+  if (tab === 'settings') populateSettingsForm();
 }
 
 /* ── init ── */
 (async () => {
-  try { await loadCampaigns(); } catch(e) {}
-  refreshDaily();
+  populateSettingsForm();
+  updateHeaderSub();
+  const isNew = checkFirstRun();
+  if (isNew) {
+    // Auto-switch to settings tab on first run
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.querySelector('.tab:last-child').classList.add('active');
+    document.getElementById('panel-settings').classList.add('active');
+  } else {
+    try { await loadCampaigns(); } catch(e) {}
+    refreshDaily();
+  }
 })();
 </script>
 </body>
