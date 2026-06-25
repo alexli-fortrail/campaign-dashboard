@@ -827,15 +827,15 @@ function renderDaily() {
     const pRD0   = hasPrev ? c.roasD0[prevIdx] : null;
     const rD7    = c.roasD7[idx];
     const pRD7   = hasPrev ? c.roasD7[prevIdx] : null;
-    const ctcv   = qdata ? qdata.ctcvRatio : null;
-    const pCtcv  = null; // CTCV from quality sheet — no DoD comparison
-    const mkt    = c.mkt ? c.mkt[idx] : null;
-    const pMkt   = hasPrev && c.mkt ? c.mkt[prevIdx] : null;
-
     // Quality data lookup: join by OID + date
     const dateStr = dailyData.dates[idx] ? fmtDate(dailyData.dates[idx]) : '';
     const qkey = `${c.oid}_${dateStr}`;
     const qdata = qualityMap[qkey] || null;
+
+    const ctcv   = qdata ? qdata.ctcvRatio : null;
+    const pCtcv  = null; // CTCV from quality sheet — no DoD comparison
+    const mkt    = c.mkt ? c.mkt[idx] : null;
+    const pMkt   = hasPrev && c.mkt ? c.mkt[prevIdx] : null;
 
     if (spend != null) { totalSpend += spend; spendCount++; }
     if (inst != null)  { totalInst += inst;  instCount++; }
