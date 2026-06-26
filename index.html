@@ -1179,11 +1179,7 @@ async function fetchLiveD7(campaignOid, sheetId, gid, targetDate, tabHint) {
         if (r.length > 2) { rows = r; console.log('Got', r.length, 'rows from:', range); break; }
       } catch(e) { continue; }
     }
-    const res = await fetchWithRetry(fetchUrl);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = await res.json();
-    const rows = json.values || [];
-    console.log('fetchLiveD7 rows:', rows.length, 'sample:', rows[1]);
+    console.log('fetchLiveD7 total rows:', rows.length);
 
     // Step 3: find row matching targetDate — check col A (index 0) and col G (index 6)
     let found = null;
