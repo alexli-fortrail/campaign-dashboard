@@ -342,6 +342,7 @@ tr:hover .freeze-1 { background: var(--bg2); }
       <option value="0">Loading dates...</option>
     </select>
     <div class="toolbar-spacer"></div>
+    <button id="fetch-all-d7-btn" onclick="fetchAllLiveD7()" style="color:var(--green);border-color:var(--green)">↻ Fetch all live D7</button>
     <button onclick="refreshDaily()">↻ Refresh</button>
   </div>
   <div class="status-bar" id="daily-status"><span class="spinner"></span> Loading...</div>
@@ -1163,7 +1164,6 @@ async function fetchLiveD7(campaignOid, sheetId, gid, targetDate, tabHint) {
   try {
     // Try multiple range strategies in order until one returns data
     const candidates = [];
-    if (gid && gid !== '0') candidates.push(`gid${gid}!A1:K500`); // won't work but skip
     if (tabHint) candidates.push(`'${tabHint.replace(/'/g, "\'")}'!A1:K500`);
     candidates.push('A1:K500'); // default first tab
 
@@ -1219,6 +1219,30 @@ document.addEventListener('click', function(e) {
   const tabHint = btn.dataset.tabhint || '';
   if (oid && sheetId && date) fetchLiveD7(oid, sheetId, gid, date, tabHint);
 });
+
+
+async function fetchAllLiveD7() {
+  if (!dailyData || !dailyData.campaigns.length) return;
+  const btn = document.getElementById('fetch-all-d7-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Fetching...'; }
+
+  const idx = parseInt(document.getElementById('daily-date-sel').value) || 0;
+  const targetDate = dailyData.dates[idx];
+  if (!targetDate) return;
+
+  // Fetch in batches of 3 to avoid rate limits
+  const campaigns = dailyData.campaigns.filter(c => c.sheetId && !liveD7Map[c.oid]);
+  let done = 0;
+  for (let i = 0; i < campaigns.length; i += 3) {
+    const batch = campaigns.slice(i, i + 3);
+    await Promise.allSettled(batch.map(c => fetchLiveD7(c.oid, c.sheetId, c.sheetGid || '0', targetDate, c.name)));
+    done += batch.length;
+    if (btn) btn.textContent = `⏳ ${done}/${campaigns.length}...`;
+    if (i + 3 < campaigns.length) await new Promise(r => setTimeout(r, 1000));
+  }
+
+  if (btn) { btn.disabled = false; btn.textContent = '↻ Fetch all live D7'; }
+}
 
 /* ── sorting ── */
 let dailySort = {col: null, asc: false};
