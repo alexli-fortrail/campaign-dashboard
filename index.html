@@ -1166,7 +1166,7 @@ async function fetchLiveD7(campaignOid, sheetId, gid, targetDate) {
     // We identify it by looking for the tab whose first column contains dates
     let tabName = '';
     try {
-      const metaRes = await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?key=${getApiKey()}&fields=sheets.properties,spreadsheetProperties.title`);
+      const metaRes = await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?key=${getApiKey()}&fields=sheets.properties,spreadsheetProperties`);
       if (metaRes.ok) {
         const meta = await metaRes.json();
         const sheets = meta.sheets || [];
