@@ -904,7 +904,7 @@ function renderDaily() {
       <td>${(() => {
         const live = liveD7Map[c.oid];
         if (!live) return c.sheetId
-          ? `<button class="live-d7-btn" data-oid="${c.oid}" data-sheetid="${c.sheetId}" data-gid="${c.sheetGid || '0'}" data-date="${dailyData.dates[idx]}" style="font-size:10px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--border2);background:var(--bg);color:var(--text2);cursor:pointer">↻</button>`
+          ? `<button class="live-d7-btn" data-oid="${c.oid}" data-sheetid="${c.sheetId}" data-gid="${c.sheetGid || '0'}" data-date="${dailyData.dates[idx]}" data-tabhint="${c.name.replace(/"/g,'&quot;')}" style="font-size:10px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--border2);background:var(--bg);color:var(--text2);cursor:pointer">↻</button>`
           : '<span style="color:var(--text3)">—</span>';
         if (live.loading) return '<span style="color:var(--text3);font-size:11px">…</span>';
         if (live.error) return '<span style="color:var(--text3);font-size:10px" title="' + live.error + '">—</span>';
@@ -1155,41 +1155,30 @@ function renderWeekly() {
 /* ── LIVE D7 ROAS ── */
 let liveD7Map = {}; // key: oid → value: { roasD7, loading, error }
 
-async function fetchLiveD7(campaignOid, sheetId, gid, targetDate) {
-  console.log('fetchLiveD7 called:', campaignOid, sheetId, 'gid:', gid, targetDate);
+async function fetchLiveD7(campaignOid, sheetId, gid, targetDate, tabHint) {
+  console.log('fetchLiveD7 called:', campaignOid, 'gid:', gid, targetDate, 'tabHint:', tabHint);
   liveD7Map[campaignOid] = { loading: true };
   renderDaily();
 
   try {
-    // Step 1: get sheet metadata to find the correct daily data tab
-    // The daily data tab contains col A=date, col G=date, col K=ROAS D7
-    // We identify it by looking for the tab whose first column contains dates
-    let tabName = '';
-    try {
-      const metaRes = await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?key=${getApiKey()}&fields=sheets.properties,spreadsheetProperties`);
-      if (metaRes.ok) {
-        const meta = await metaRes.json();
-        const sheets = meta.sheets || [];
-        // If gid matches a specific tab, use it
-        const byGid = gid && gid !== '0' ? sheets.find(s => String(s.properties.sheetId) === String(gid)) : null;
-        if (byGid) {
-          tabName = byGid.properties.title;
-        } else {
-          // Find the tab whose name matches the spreadsheet title (campaign name tab)
-          // Fall back to first non-Sheet1 tab, then first tab
-          const metaTitle = meta.spreadsheetProperties ? meta.spreadsheetProperties.title : '';
-          const byTitle = metaTitle ? sheets.find(s => s.properties.title === metaTitle) : null;
-          const nonSheet1 = sheets.find(s => s.properties.title !== 'Sheet1' && !/^sheet\d+$/i.test(s.properties.title));
-          tabName = (byTitle || nonSheet1 || sheets[0])?.properties.title || '';
-        }
-      }
-    } catch(e) { console.warn('Meta fetch failed:', e.message); }
+    // Try multiple range strategies in order until one returns data
+    const candidates = [];
+    if (gid && gid !== '0') candidates.push(`gid${gid}!A1:K500`); // won't work but skip
+    if (tabHint) candidates.push(`'${tabHint.replace(/'/g, "\'")}'!A1:K500`);
+    candidates.push('A1:K500'); // default first tab
 
-    // Step 2: fetch data from correct tab
-    const safeTabName = tabName.replace(/'/g, "\'");
-    const range = tabName ? `'${safeTabName}'!A1:K500` : 'A1:K500';
-    const fetchUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(range)}?key=${getApiKey()}`;
-    console.log('Fetching tab:', tabName, '| range:', range);
+    let rows = [];
+    for (const range of candidates) {
+      try {
+        const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(range)}?key=${getApiKey()}`;
+        console.log('Trying range:', range);
+        const res = await fetch(url);
+        if (!res.ok) { console.warn('Range failed:', range, res.status); continue; }
+        const json = await res.json();
+        const r = json.values || [];
+        if (r.length > 2) { rows = r; console.log('Got', r.length, 'rows from:', range); break; }
+      } catch(e) { continue; }
+    }
     const res = await fetchWithRetry(fetchUrl);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
@@ -1231,7 +1220,8 @@ document.addEventListener('click', function(e) {
   const sheetId = btn.dataset.sheetid;
   const gid = btn.dataset.gid || '0';
   const date = btn.dataset.date;
-  if (oid && sheetId && date) fetchLiveD7(oid, sheetId, gid, date);
+  const tabHint = btn.dataset.tabhint || '';
+  if (oid && sheetId && date) fetchLiveD7(oid, sheetId, gid, date, tabHint);
 });
 
 /* ── sorting ── */
