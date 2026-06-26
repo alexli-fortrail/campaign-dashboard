@@ -357,7 +357,8 @@ tr:hover .freeze-1 { background: var(--bg2); }
           <th data-col="spend" onclick="sortDaily('spend')" style="cursor:pointer">Spend<br><span style="font-weight:400;font-size:10px">DoD ↕</span></th>
           <th data-col="inst" onclick="sortDaily('inst')" style="cursor:pointer">Installs<br><span style="font-weight:400;font-size:10px">DoD ↕</span></th>
           <th data-col="roasD0" onclick="sortDaily('roasD0')" style="cursor:pointer">ROAS D0<br><span style="font-weight:400;font-size:10px">DoD ↕</span></th>
-          <th data-col="roasD7" onclick="sortDaily('roasD7')" style="cursor:pointer">ROAS D7<br><span style="font-weight:400;font-size:10px">DoD ↕</span></th>
+          <th data-col="roasD7" onclick="sortDaily('roasD7')" style="cursor:pointer">ROAS D7<br><span style="font-weight:400;font-size:10px">mature ↕</span></th>
+          <th>ROAS D7<br><span style="font-weight:400;font-size:10px;color:var(--green)">live ↻</span></th>
           <th data-col="ctcv" onclick="sortDaily('ctcv')" style="cursor:pointer">CTCV ratio ↕</th>
           <th data-col="mkt" onclick="sortDaily('mkt')" style="cursor:pointer">Market share<br><span style="font-weight:400;font-size:10px">DoD ↕</span></th>
           <th data-col="invalid" onclick="sortDaily('invalid')" style="cursor:pointer">Invalid % (MMP)<br><span style="font-weight:400;font-size:10px">↕</span></th>
@@ -367,7 +368,7 @@ tr:hover .freeze-1 { background: var(--bg2); }
           <th data-col="ctcvCvr" onclick="sortDaily('ctcvCvr')" style="cursor:pointer">CTCV CVR<br><span style="font-weight:400;font-size:10px">↕</span></th>
         </tr>
       </thead>
-      <tbody id="daily-table"><tr class="empty-row"><td colspan="14">Loading...</td></tr></tbody>
+      <tbody id="daily-table"><tr class="empty-row"><td colspan="15">Loading...</td></tr></tbody>
     </table>
   </div>
   <div class="note" id="daily-note"></div>
@@ -551,7 +552,7 @@ async function loadCampaigns() {
     if (!link.startsWith('https://docs.google.com/spreadsheets/d/')) continue;
     const fileId = link.split('/d/')[1]?.split('/')[0];
     if (!fileId) continue;
-    campaigns.push({name, oid, id: fileId, status});
+    campaigns.push({name, oid, id: fileId, status, sheetId: fileId});
   }
   CAMPAIGNS = campaigns;
   return campaigns;
@@ -709,7 +710,7 @@ async function refreshDaily() {
     }
   }
   setProgress('daily-progress', 10);
-  document.getElementById('daily-table').innerHTML = '<tr class="empty-row"><td colspan="14">Loading...</td></tr>';
+  document.getElementById('daily-table').innerHTML = '<tr class="empty-row"><td colspan="15">Loading...</td></tr>';
   document.getElementById('daily-summary').innerHTML = '';
 
   try {
@@ -724,24 +725,50 @@ async function refreshDaily() {
     setProgress('daily-progress', 70);
 
     // Column indices (0-based)
-    const C_NAME=0, C_OID=1, C_STATUS=2, C_AM=6;
+    const C_NAME=0, C_OID=1, C_STATUS=2, C_SHEET_LINK=4, C_AM=6;
     const C_MKT=19;
     const C_ROAS_D0=27, C_ROAS_D7=42;
     const C_SPEND=69, C_INST=80;
 
-    // Helper: get 4 values starting at col c for a row
-    const g4 = (row, c) => [0,1,2,3].map(i => parseNum(row[c+i]));
-
-    // Find the date row by scanning for YYYY/MM/DD pattern in spend col
-    let dateRow = [];
+    // Find the date row — scan first 5 rows for YYYY/MM/DD in spend col
+    let dateRowIdx = -1;
     for (let i = 0; i < Math.min(allRows.length, 5); i++) {
       const row = allRows[i] || [];
       if (row[C_SPEND] && /\d{4}\/\d{2}\/\d{2}/.test(String(row[C_SPEND]))) {
-        dateRow = [row[C_SPEND], row[C_SPEND+1], row[C_SPEND+2], row[C_SPEND+3]];
+        dateRowIdx = i;
         break;
       }
     }
-    const dates = dateRow.slice(0, 4);
+    const dateRowData = dateRowIdx >= 0 ? allRows[dateRowIdx] : [];
+    const dates = [0,1,2,3].map(i => dateRowData[C_SPEND + i] || '');
+
+    // Build per-column date→offset maps for columns that may lag (e.g. ROAS D7)
+    function buildDateOffsetMap(startCol, maxCols) {
+      const map = {};
+      for (let i = 0; i < maxCols; i++) {
+        const d = dateRowData[startCol + i];
+        if (d && /\d{4}\/\d{2}\/\d{2}/.test(String(d))) map[d] = i;
+      }
+      return map;
+    }
+    const spendDateMap  = buildDateOffsetMap(C_SPEND,   4);
+    const mktDateMap    = buildDateOffsetMap(C_MKT,     7);
+    const roasD0DateMap = buildDateOffsetMap(C_ROAS_D0, 7);
+    const roasD7DateMap = buildDateOffsetMap(C_ROAS_D7, 7);
+    const instDateMap   = buildDateOffsetMap(C_INST,    4);
+
+    // Helper: get value for a specific date from a column group
+    function getByDate(row, startCol, dateMap, date) {
+      const offset = dateMap[date];
+      if (offset === undefined) return null;
+      return parseNum(row[startCol + offset]);
+    }
+    function getByDatePair(row, startCol, dateMap, date, prevDate) {
+      return [getByDate(row, startCol, dateMap, date), getByDate(row, startCol, dateMap, prevDate)];
+    }
+
+    // Helper: get 4 values starting at col c for a row (for columns without date maps)
+    const g4 = (row, c) => [0,1,2,3].map(i => parseNum(row[c+i]));
 
     dailyData = {dates, campaigns: []};
 
@@ -751,18 +778,21 @@ async function refreshDaily() {
       const oid    = String(row[C_OID]    || '').trim();
       const status = String(row[C_STATUS] || '').trim();
       const am     = String(row[C_AM]     || '').trim();
+      const sheetLink = String(row[C_SHEET_LINK] || '').trim();
+      const sheetId = sheetLink.includes('/d/') ? sheetLink.split('/d/')[1].split('/')[0] : '';
 
       if (!name || !am.toLowerCase().includes(getAm().toLowerCase())) continue;
-      const instToday = parseNum(row[C_INST]);
+      const instToday = getByDate(row, C_INST, instDateMap, dates[0]);
       if (status !== 'Running' && !(instToday > 0)) continue;
 
-      const spend  = g4(row, C_SPEND);
-      const inst   = g4(row, C_INST);
-      const roasD0 = g4(row, C_ROAS_D0);
-      const roasD7 = g4(row, C_ROAS_D7);
-      const mkt    = g4(row, C_MKT);
+      // Use date-based lookup to handle columns with different date ranges
+      const spend  = dates.map(d => getByDate(row, C_SPEND,   spendDateMap,  d));
+      const inst   = dates.map(d => getByDate(row, C_INST,    instDateMap,   d));
+      const roasD0 = dates.map(d => getByDate(row, C_ROAS_D0, roasD0DateMap, d));
+      const roasD7 = dates.map(d => getByDate(row, C_ROAS_D7, roasD7DateMap, d));
+      const mkt    = dates.map(d => getByDate(row, C_MKT,     mktDateMap,    d));
 
-      dailyData.campaigns.push({name, oid, status, spend, inst, roasD0, roasD7, mkt});
+      dailyData.campaigns.push({name, oid, status, sheetId, spend, inst, roasD0, roasD7, mkt});
     }
 
     setProgress('daily-progress', 100);
@@ -782,13 +812,17 @@ async function refreshDaily() {
     setProgress('daily-progress', 0);
     setStatus('daily-status', `Error: ${e.message}`);
     document.getElementById('daily-table').innerHTML =
-      `<tr class="empty-row"><td colspan="14" style="color:var(--red)">${e.message}</td></tr>`;
+      `<tr class="empty-row"><td colspan="15" style="color:var(--red)">${e.message}</td></tr>`;
   }
 }
 
 function renderDaily() {
   if (!dailyData) return;
   const idx = parseInt(document.getElementById('daily-date-sel').value) || 0;
+  // Reset live D7 if date changed
+  const selectedDate = dailyData.dates[idx] || '';
+  if (renderDaily._lastDate && renderDaily._lastDate !== selectedDate) resetLiveD7();
+  renderDaily._lastDate = selectedDate;
   const prevIdx = idx + 1;
   const hasPrev = prevIdx < 4;
 
@@ -856,6 +890,15 @@ function renderDaily() {
       <td>${metricCell(inst, pInst, fmtInt, false)}</td>
       <td>${metricCell(rD0, pRD0, v => p(v)+'%', false)}</td>
       <td>${metricCell(rD7, pRD7, v => p(v)+'%', false)}</td>
+      <td>${(() => {
+        const live = liveD7Map[c.oid];
+        if (!live) return c.sheetId
+          ? `<button onclick="fetchLiveD7('${c.oid}','${c.sheetId}','${dailyData.dates[idx]}')" style="font-size:10px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--border2);background:var(--bg);color:var(--text2);cursor:pointer">↻</button>`
+          : '<span style="color:var(--text3)">—</span>';
+        if (live.loading) return '<span style="color:var(--text3);font-size:11px">…</span>';
+        if (live.error) return '<span style="color:var(--text3);font-size:10px" title="' + live.error + '">—</span>';
+        return '<span style="color:var(--green);font-weight:500">' + live.roasD7 + '</span>';
+      })()}</td>
       <td>${ctcvFlag}</td>
       <td>${metricCell(mkt, pMkt, v => p(v)+'%')}</td>
       <td>${fmtQuality(qdata?.invalid)}</td>
@@ -867,7 +910,7 @@ function renderDaily() {
   });
 
   document.getElementById('daily-table').innerHTML = rows.join('') ||
-    '<tr class="empty-row"><td colspan="14">No campaigns found</td></tr>';
+    '<tr class="empty-row"><td colspan="15">No campaigns found</td></tr>';
 
   document.getElementById('daily-summary').innerHTML = `
     <div class="mcard"><div class="mcard-label">Total spend</div><div class="mcard-val">${fmt$(totalSpend)}</div></div>
@@ -1096,6 +1139,47 @@ function renderWeekly() {
 
 
 
+
+
+/* ── LIVE D7 ROAS ── */
+let liveD7Map = {}; // key: oid → value: { roasD7, loading, error }
+
+async function fetchLiveD7(campaignOid, sheetId, targetDate) {
+  liveD7Map[campaignOid] = { loading: true };
+  renderDaily(); // show spinner immediately
+
+  try {
+    // Fetch col A (date) and col K (ROAS D7) from first sheet tab
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A1:K500?key=${getApiKey()}`;
+    const res = await fetchWithRetry(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    const rows = json.values || [];
+
+    // Find the row matching targetDate in col A
+    // targetDate format: "2026/06/25"
+    let found = null;
+    for (const row of rows) {
+      if (row[0] && row[0].trim() === targetDate) {
+        found = row[10]; // col K = index 10
+        break;
+      }
+    }
+
+    if (found != null && found !== '') {
+      liveD7Map[campaignOid] = { roasD7: found };
+    } else {
+      liveD7Map[campaignOid] = { error: 'No data for this date' };
+    }
+  } catch(e) {
+    liveD7Map[campaignOid] = { error: e.message };
+  }
+  renderDaily();
+}
+
+function resetLiveD7() {
+  liveD7Map = {};
+}
 
 /* ── sorting ── */
 let dailySort = {col: null, asc: false};
