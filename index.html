@@ -784,6 +784,8 @@ async function refreshDaily() {
       const am     = String(row[C_AM]     || '').trim();
       const sheetLinkRaw = String((sheetLinkRows[i] || [])[0] || row[C_SHEET_LINK] || '').trim();
       const sheetId = sheetLinkRaw.includes('/d/') ? sheetLinkRaw.split('/d/')[1].split('/')[0] : '';
+      // Extract gid for correct tab targeting
+      const sheetGid = sheetLinkRaw.includes('gid=') ? sheetLinkRaw.split('gid=')[1].split('&')[0].split('#')[0] : '0';
 
       if (!name || !am.toLowerCase().includes(getAm().toLowerCase())) continue;
       const instToday = getByDate(row, C_INST, instDateMap, dates[0]);
@@ -796,7 +798,7 @@ async function refreshDaily() {
       const roasD7 = g4(row, C_ROAS_D7); // fixed offset — D7 lags by ~7 days, use as-is
       const mkt    = dates.map(d => getByDate(row, C_MKT,     mktDateMap,    d));
 
-      dailyData.campaigns.push({name, oid, status, sheetId, spend, inst, roasD0, roasD7, mkt});
+      dailyData.campaigns.push({name, oid, status, sheetId, sheetGid, spend, inst, roasD0, roasD7, mkt});
     }
 
     setProgress('daily-progress', 100);
@@ -902,7 +904,7 @@ function renderDaily() {
       <td>${(() => {
         const live = liveD7Map[c.oid];
         if (!live) return c.sheetId
-          ? `<button class="live-d7-btn" data-oid="${c.oid}" data-sheetid="${c.sheetId}" data-date="${dailyData.dates[idx]}" style="font-size:10px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--border2);background:var(--bg);color:var(--text2);cursor:pointer">↻</button>`
+          ? `<button class="live-d7-btn" data-oid="${c.oid}" data-sheetid="${c.sheetId}" data-gid="${c.sheetGid || '0'}" data-date="${dailyData.dates[idx]}" style="font-size:10px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--border2);background:var(--bg);color:var(--text2);cursor:pointer">↻</button>`
           : '<span style="color:var(--text3)">—</span>';
         if (live.loading) return '<span style="color:var(--text3);font-size:11px">…</span>';
         if (live.error) return '<span style="color:var(--text3);font-size:10px" title="' + live.error + '">—</span>';
@@ -1153,26 +1155,33 @@ function renderWeekly() {
 /* ── LIVE D7 ROAS ── */
 let liveD7Map = {}; // key: oid → value: { roasD7, loading, error }
 
-async function fetchLiveD7(campaignOid, sheetId, targetDate) {
-  console.log('fetchLiveD7 called:', campaignOid, sheetId, targetDate);
+async function fetchLiveD7(campaignOid, sheetId, gid, targetDate) {
+  console.log('fetchLiveD7 called:', campaignOid, sheetId, 'gid:', gid, targetDate);
   liveD7Map[campaignOid] = { loading: true };
   renderDaily(); // show spinner immediately
 
   try {
-    // Fetch col A (date) and col K (ROAS D7) from first sheet tab
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A1:K500?key=${getApiKey()}`; // col G=date, col K=ROAS D7
-    const res = await fetchWithRetry(url);
+    // Use gid to target the correct tab
+    const tabParam = gid && gid !== '0' ? `&ranges=A1:K500&majorDimension=ROWS` : '';
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A1:K500?key=${getApiKey()}&ranges=A1:K500`;
+    // Build correct URL with sheet gid if available
+    const fetchUrl = gid && gid !== '0'
+      ? `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(gid + '!A1:K500')}?key=${getApiKey()}`
+      : url;
+    const res = await fetchWithRetry(fetchUrl);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
     const rows = json.values || [];
+    console.log('fetchLiveD7 rows fetched:', rows.length, 'first row:', rows[0]);
 
-    // Find the row matching targetDate in col A
-    // targetDate format: "2026/06/25"
+    // Find the row matching targetDate — check both col A (index 0) and col G (index 6)
     let found = null;
     for (const row of rows) {
-      // Date is in col G (index 6) in individual campaign sheets
-      if (row[6] && row[6].trim() === targetDate) {
+      const dateA = row[0] ? row[0].trim() : '';
+      const dateG = row[6] ? row[6].trim() : '';
+      if (dateA === targetDate || dateG === targetDate) {
         found = row[10]; // col K = index 10 = ROAS D7
+        console.log('Found date match:', dateA || dateG, 'ROAS D7:', found);
         break;
       }
     }
@@ -1198,8 +1207,9 @@ document.addEventListener('click', function(e) {
   if (!btn) return;
   const oid = btn.dataset.oid;
   const sheetId = btn.dataset.sheetid;
+  const gid = btn.dataset.gid || '0';
   const date = btn.dataset.date;
-  if (oid && sheetId && date) fetchLiveD7(oid, sheetId, date);
+  if (oid && sheetId && date) fetchLiveD7(oid, sheetId, gid, date);
 });
 
 /* ── sorting ── */
