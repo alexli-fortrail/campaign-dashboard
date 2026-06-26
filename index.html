@@ -1158,30 +1158,40 @@ let liveD7Map = {}; // key: oid → value: { roasD7, loading, error }
 async function fetchLiveD7(campaignOid, sheetId, gid, targetDate) {
   console.log('fetchLiveD7 called:', campaignOid, sheetId, 'gid:', gid, targetDate);
   liveD7Map[campaignOid] = { loading: true };
-  renderDaily(); // show spinner immediately
+  renderDaily();
 
   try {
-    // Use gid to target the correct tab
-    const tabParam = gid && gid !== '0' ? `&ranges=A1:K500&majorDimension=ROWS` : '';
-    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/A1:K500?key=${getApiKey()}&ranges=A1:K500`;
-    // Build correct URL with sheet gid if available
-    const fetchUrl = gid && gid !== '0'
-      ? `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(gid + '!A1:K500')}?key=${getApiKey()}`
-      : url;
+    // Step 1: get sheet metadata to find tab name from gid
+    let tabName = '';
+    try {
+      const metaRes = await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?key=${getApiKey()}&fields=sheets.properties`);
+      if (metaRes.ok) {
+        const meta = await metaRes.json();
+        const sheets = meta.sheets || [];
+        // Find tab by gid, fallback to first tab
+        const match = gid ? sheets.find(s => String(s.properties.sheetId) === String(gid)) : null;
+        tabName = match ? match.properties.title : (sheets[0] ? sheets[0].properties.title : '');
+      }
+    } catch(e) { console.warn('Meta fetch failed, using default tab:', e.message); }
+
+    // Step 2: fetch data from correct tab
+    const range = tabName ? `'${tabName}'!A1:K500` : 'A1:K500';
+    const fetchUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(range)}?key=${getApiKey()}`;
+    console.log('Fetching range:', range);
     const res = await fetchWithRetry(fetchUrl);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
     const rows = json.values || [];
-    console.log('fetchLiveD7 rows fetched:', rows.length, 'first row:', rows[0]);
+    console.log('fetchLiveD7 rows:', rows.length, 'sample:', rows[1]);
 
-    // Find the row matching targetDate — check both col A (index 0) and col G (index 6)
+    // Step 3: find row matching targetDate — check col A (index 0) and col G (index 6)
     let found = null;
     for (const row of rows) {
       const dateA = row[0] ? row[0].trim() : '';
       const dateG = row[6] ? row[6].trim() : '';
       if (dateA === targetDate || dateG === targetDate) {
-        found = row[10]; // col K = index 10 = ROAS D7
-        console.log('Found date match:', dateA || dateG, 'ROAS D7:', found);
+        found = row[10]; // col K = ROAS D7
+        console.log('Date match found:', dateA || dateG, '→ ROAS D7:', found);
         break;
       }
     }
