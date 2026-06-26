@@ -1161,23 +1161,35 @@ async function fetchLiveD7(campaignOid, sheetId, gid, targetDate) {
   renderDaily();
 
   try {
-    // Step 1: get sheet metadata to find tab name from gid
+    // Step 1: get sheet metadata to find the correct daily data tab
+    // The daily data tab contains col A=date, col G=date, col K=ROAS D7
+    // We identify it by looking for the tab whose first column contains dates
     let tabName = '';
     try {
-      const metaRes = await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?key=${getApiKey()}&fields=sheets.properties`);
+      const metaRes = await fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?key=${getApiKey()}&fields=sheets.properties,spreadsheetProperties.title`);
       if (metaRes.ok) {
         const meta = await metaRes.json();
         const sheets = meta.sheets || [];
-        // Find tab by gid, fallback to first tab
-        const match = gid ? sheets.find(s => String(s.properties.sheetId) === String(gid)) : null;
-        tabName = match ? match.properties.title : (sheets[0] ? sheets[0].properties.title : '');
+        // If gid matches a specific tab, use it
+        const byGid = gid && gid !== '0' ? sheets.find(s => String(s.properties.sheetId) === String(gid)) : null;
+        if (byGid) {
+          tabName = byGid.properties.title;
+        } else {
+          // Find the tab whose name matches the spreadsheet title (campaign name tab)
+          // Fall back to first non-Sheet1 tab, then first tab
+          const metaTitle = meta.spreadsheetProperties ? meta.spreadsheetProperties.title : '';
+          const byTitle = metaTitle ? sheets.find(s => s.properties.title === metaTitle) : null;
+          const nonSheet1 = sheets.find(s => s.properties.title !== 'Sheet1' && !/^sheet\d+$/i.test(s.properties.title));
+          tabName = (byTitle || nonSheet1 || sheets[0])?.properties.title || '';
+        }
       }
-    } catch(e) { console.warn('Meta fetch failed, using default tab:', e.message); }
+    } catch(e) { console.warn('Meta fetch failed:', e.message); }
 
     // Step 2: fetch data from correct tab
-    const range = tabName ? `'${tabName}'!A1:K500` : 'A1:K500';
+    const safeTabName = tabName.replace(/'/g, "\'");
+    const range = tabName ? `'${safeTabName}'!A1:K500` : 'A1:K500';
     const fetchUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(range)}?key=${getApiKey()}`;
-    console.log('Fetching range:', range);
+    console.log('Fetching tab:', tabName, '| range:', range);
     const res = await fetchWithRetry(fetchUrl);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
