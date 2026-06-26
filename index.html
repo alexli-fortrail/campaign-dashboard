@@ -902,7 +902,7 @@ function renderDaily() {
       <td>${(() => {
         const live = liveD7Map[c.oid];
         if (!live) return c.sheetId
-          ? `<button onclick="fetchLiveD7('${c.oid}','${c.sheetId}','${dailyData.dates[idx]}')" style="font-size:10px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--border2);background:var(--bg);color:var(--text2);cursor:pointer">↻</button>`
+          ? `<button class="live-d7-btn" data-oid="${c.oid}" data-sheetid="${c.sheetId}" data-date="${dailyData.dates[idx]}" style="font-size:10px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--border2);background:var(--bg);color:var(--text2);cursor:pointer">↻</button>`
           : '<span style="color:var(--text3)">—</span>';
         if (live.loading) return '<span style="color:var(--text3);font-size:11px">…</span>';
         if (live.error) return '<span style="color:var(--text3);font-size:10px" title="' + live.error + '">—</span>';
@@ -1154,6 +1154,7 @@ function renderWeekly() {
 let liveD7Map = {}; // key: oid → value: { roasD7, loading, error }
 
 async function fetchLiveD7(campaignOid, sheetId, targetDate) {
+  console.log('fetchLiveD7 called:', campaignOid, sheetId, targetDate);
   liveD7Map[campaignOid] = { loading: true };
   renderDaily(); // show spinner immediately
 
@@ -1190,6 +1191,16 @@ async function fetchLiveD7(campaignOid, sheetId, targetDate) {
 function resetLiveD7() {
   liveD7Map = {};
 }
+
+// Event delegation for live D7 buttons
+document.addEventListener('click', function(e) {
+  const btn = e.target.closest('.live-d7-btn');
+  if (!btn) return;
+  const oid = btn.dataset.oid;
+  const sheetId = btn.dataset.sheetid;
+  const date = btn.dataset.date;
+  if (oid && sheetId && date) fetchLiveD7(oid, sheetId, date);
+});
 
 /* ── sorting ── */
 let dailySort = {col: null, asc: false};
