@@ -357,7 +357,7 @@ tr:hover .freeze-1 { background: var(--bg2); }
           <th data-col="spend" onclick="sortDaily('spend')" style="cursor:pointer">Spend<br><span style="font-weight:400;font-size:10px">DoD ↕</span></th>
           <th data-col="inst" onclick="sortDaily('inst')" style="cursor:pointer">Installs<br><span style="font-weight:400;font-size:10px">DoD ↕</span></th>
           <th data-col="roasD0" onclick="sortDaily('roasD0')" style="cursor:pointer">ROAS D0<br><span style="font-weight:400;font-size:10px">DoD ↕</span></th>
-          <th data-col="roasD7" onclick="sortDaily('roasD7')" style="cursor:pointer">ROAS D7<br><span style="font-weight:400;font-size:10px">mature ↕</span></th>
+          <th id="th-roas-d7-mature" data-col="roasD7" onclick="sortDaily('roasD7')" style="cursor:pointer">ROAS D7<br><span style="font-weight:400;font-size:10px">mature ↕</span></th>
           <th>ROAS D7<br><span style="font-weight:400;font-size:10px;color:var(--green)">live ↻</span></th>
           <th data-col="ctcv" onclick="sortDaily('ctcv')" style="cursor:pointer">CTCV ratio ↕</th>
           <th data-col="mkt" onclick="sortDaily('mkt')" style="cursor:pointer">Market share<br><span style="font-weight:400;font-size:10px">DoD ↕</span></th>
@@ -741,6 +741,7 @@ async function refreshDaily() {
     }
     const dateRowData = dateRowIdx >= 0 ? allRows[dateRowIdx] : [];
     const dates = [0,1,2,3].map(i => dateRowData[C_SPEND + i] || '');
+    const roasD7Dates = [0,1,2,3].map(i => dateRowData[C_ROAS_D7 + i] || '');
 
     // Build per-column date→offset maps for columns that may lag (e.g. ROAS D7)
     function buildDateOffsetMap(startCol, maxCols) {
@@ -754,7 +755,6 @@ async function refreshDaily() {
     const spendDateMap  = buildDateOffsetMap(C_SPEND,   4);
     const mktDateMap    = buildDateOffsetMap(C_MKT,     7);
     const roasD0DateMap = buildDateOffsetMap(C_ROAS_D0, 7);
-    const roasD7DateMap = buildDateOffsetMap(C_ROAS_D7, 7);
     const instDateMap   = buildDateOffsetMap(C_INST,    4);
 
     // Helper: get value for a specific date from a column group
@@ -770,7 +770,7 @@ async function refreshDaily() {
     // Helper: get 4 values starting at col c for a row (for columns without date maps)
     const g4 = (row, c) => [0,1,2,3].map(i => parseNum(row[c+i]));
 
-    dailyData = {dates, campaigns: []};
+    dailyData = {dates, roasD7Dates, campaigns: []};
 
     for (let i = 2; i < allRows.length; i++) {
       const row = allRows[i] || [];
@@ -789,7 +789,7 @@ async function refreshDaily() {
       const spend  = dates.map(d => getByDate(row, C_SPEND,   spendDateMap,  d));
       const inst   = dates.map(d => getByDate(row, C_INST,    instDateMap,   d));
       const roasD0 = dates.map(d => getByDate(row, C_ROAS_D0, roasD0DateMap, d));
-      const roasD7 = dates.map(d => getByDate(row, C_ROAS_D7, roasD7DateMap, d));
+      const roasD7 = g4(row, C_ROAS_D7); // fixed offset — D7 lags by ~7 days, use as-is
       const mkt    = dates.map(d => getByDate(row, C_MKT,     mktDateMap,    d));
 
       dailyData.campaigns.push({name, oid, status, sheetId, spend, inst, roasD0, roasD7, mkt});
@@ -823,6 +823,11 @@ function renderDaily() {
   const selectedDate = dailyData.dates[idx] || '';
   if (renderDaily._lastDate && renderDaily._lastDate !== selectedDate) resetLiveD7();
   renderDaily._lastDate = selectedDate;
+
+  // Update D7 mature header with actual date
+  const d7MatureDate = dailyData.roasD7Dates ? dailyData.roasD7Dates[idx] || '' : '';
+  const thD7 = document.getElementById('th-roas-d7-mature');
+  if (thD7) thD7.innerHTML = `ROAS D7<br><span style="font-weight:400;font-size:10px">${d7MatureDate ? d7MatureDate + ' ↕' : 'mature ↕'}</span>`;
   const prevIdx = idx + 1;
   const hasPrev = prevIdx < 4;
 
