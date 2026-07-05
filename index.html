@@ -227,7 +227,7 @@ tr:hover td { background: var(--bg2); }
 .badge-blue { background: var(--blue-bg); color: var(--blue-text); }
 
 .delta-up { color: var(--green); font-size: 11px; }
-.delta-down { color: var(--red); font-size: var(--11px); font-size: 11px; }
+.delta-down { color: var(--red); font-size: 11px; }
 .delta-flat { color: var(--text3); font-size: 11px; }
 
 .metric-cell { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
@@ -418,7 +418,7 @@ tr:hover .freeze-1 { background: var(--bg2); }
 
     <div class="settings-group">
       <label class="settings-label">Google Sheets API Key</label>
-      <input class="settings-input" id="cfg-apikey" type="text" placeholder="AIzaSy..." />
+      <input class="settings-input" id="cfg-apikey" type="password" placeholder="AIzaSy..." autocomplete="off" />
       <div class="settings-hint">Create a read-only API key in <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color:var(--blue)">Google Cloud Console</a> with Sheets API enabled. Set Application Restrictions to None.</div>
     </div>
 
@@ -655,6 +655,9 @@ async function fetchQualityData() {
 
   const oidCol   = colMap['oid']                     ?? -1;
   const dateCol  = colMap['date']                    ?? -1;
+  if (oidCol === -1 || dateCol === -1) {
+    throw new Error("Quality sheet is missing required columns 'oid' or 'date'. Check the sheet header row.");
+  }
   const invCol   = colMap['invalid_ratio_mmp']       ?? -1;
   const distCol  = colMap['distribution_outlier_ratio'] ?? -1;
   // PA_ratio appears twice; find last occurrence (actual ratio, not score)
@@ -718,8 +721,8 @@ async function refreshDaily() {
     setProgress('daily-progress', 30);
     // Fetch main data + col E (sheet links) separately since hyperlinks need raw URL
     const [singleRes, sheetLinkRes] = await Promise.all([
-      fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getMasterId()}/values/${encodeURIComponent('Index!A1:CK2000')}?key=${getApiKey()}`),
-      fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getMasterId()}/values/${encodeURIComponent('Index!E1:E2000')}?key=${getApiKey()}&valueRenderOption=UNFORMATTED_VALUE`)
+      fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${getMasterId()}/values/${encodeURIComponent('Index!A1:CK2000')}?key=${getApiKey()}`),
+      fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${getMasterId()}/values/${encodeURIComponent('Index!E1:E2000')}?key=${getApiKey()}&valueRenderOption=UNFORMATTED_VALUE`)
     ]);
     if (!singleRes.ok) throw new Error(`Sheets API error: ${singleRes.status}`);
     const json = await singleRes.json();
