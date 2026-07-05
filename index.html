@@ -633,7 +633,7 @@ function fmtDate(dateStr) {
 
 async function fetchQualityData() {
   // Fetch the quality sheet (importranged copy, gid=0)
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${getQualityId()}/values/A1:CZ700?key=${getApiKey()}`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${getQualityId()}/values/${encodeURIComponent("'alex.li'!A1:DL700")}?key=${getApiKey()}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Quality sheet error: ${res.status}`);
   const json = await res.json();
@@ -718,8 +718,8 @@ async function refreshDaily() {
     setProgress('daily-progress', 30);
     // Fetch main data + col E (sheet links) separately since hyperlinks need raw URL
     const [singleRes, sheetLinkRes] = await Promise.all([
-      fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getMasterId()}/values/A1:CK500?key=${getApiKey()}`),
-      fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getMasterId()}/values/E1:E500?key=${getApiKey()}&valueRenderOption=UNFORMATTED_VALUE`)
+      fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getMasterId()}/values/${encodeURIComponent('Index!A1:CK500')}?key=${getApiKey()}`),
+      fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getMasterId()}/values/${encodeURIComponent('Index!E1:E500')}?key=${getApiKey()}&valueRenderOption=UNFORMATTED_VALUE`)
     ]);
     if (!singleRes.ok) throw new Error(`Sheets API error: ${singleRes.status}`);
     const json = await singleRes.json();
