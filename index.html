@@ -525,39 +525,39 @@ function getAmColIdx() {
 }
 
 let CAMPAIGNS = []; // dynamically loaded from master sheet
+let weeklyData = {};
+let availableWeeks = [];
 
 async function loadCampaigns() {
-  // Fetch cols A (name), C (status), E (gsheet link), G (AM) from master sheet
-  // Fetch name/status/AM with FORMATTED_VALUE, col E (links) with UNFORMATTED_VALUE
-  const [batchRes, linkRes] = await Promise.all([
-    fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getMasterId()}/values:batchGet?key=${getApiKey()}` +
-      `&ranges=${encodeURIComponent('Index!A1:B2000')}` +
-      `&ranges=${encodeURIComponent('Index!C1:C2000')}` +
-      `&ranges=${encodeURIComponent('Index!' + (loadConfig().amCol || 'G') + '1:' + (loadConfig().amCol || 'G') + '2000')}`),
-    fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getMasterId()}/values/${encodeURIComponent('Index!E1:E2000')}?key=${getApiKey()}&valueRenderOption=UNFORMATTED_VALUE`)
+  // Use single wide range A1:G2000 to keep row indices aligned
+  // Col E (GSheet link) needs UNFORMATTED_VALUE to get full URL
+  const amCol = loadConfig().amCol || 'G';
+  const amColIdx = getAmColIdx(); // 0-based
+  const maxCol = amColIdx >= 6 ? amCol : 'G'; // ensure we fetch at least to col G
+
+  const [mainRes, linkRes] = await Promise.all([
+    fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${getMasterId()}/values/${encodeURIComponent('Index!A1:' + maxCol + '2000')}?key=${getApiKey()}`),
+    fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${getMasterId()}/values/${encodeURIComponent('Index!E1:E2000')}?key=${getApiKey()}&valueRenderOption=UNFORMATTED_VALUE`)
   ]);
-  if (!batchRes.ok) throw new Error(`Master sheet error: ${batchRes.status}`);
-  const json = await batchRes.json();
-  const vr = json.valueRanges;
-  const nameRows   = vr[0].values || [];
-  const statusRows = vr[1].values || [];
-  const amRows     = vr[2].values || [];
-  const linkJson   = linkRes.ok ? await linkRes.json() : {values:[]};
-  const linkRows   = linkJson.values || [];
+  if (!mainRes.ok) throw new Error(`Master sheet error: ${mainRes.status}`);
+  const mainJson = await mainRes.json();
+  const allRows  = mainJson.values || [];
+  const linkJson = linkRes.ok ? await linkRes.json() : {values:[]};
+  const linkRows = linkJson.values || [];
 
   const campaigns = [];
-  for (let i = 0; i < nameRows.length; i++) {
-    const name   = (nameRows[i]   || [])[0] || '';
-    const oid    = (nameRows[i]   || [])[1] || '';
-    const status = (statusRows[i] || [])[0] || '';
-    const link   = (linkRows[i]   || [])[0] || '';
-    const am     = (amRows[i]     || [])[0] || '';
+  for (let i = 0; i < allRows.length; i++) {
+    const row    = allRows[i] || [];
+    const name   = String(row[0] || '').trim();
+    const oid    = String(row[1] || '').trim();
+    const status = String(row[2] || '').trim();
+    const link   = String((linkRows[i] || [])[0] || '').trim();
+    const am     = String(row[amColIdx] || '').trim();
     if (!name) continue;
     if (getAm() && !am.toLowerCase().includes(getAm().toLowerCase())) continue;
     if (status !== 'Running' && status !== 'Paused') continue;
-    if (!link.startsWith('https://docs.google.com/spreadsheets/d/')) continue;
-    const fileId = link.split('/d/')[1]?.split('/')[0];
-    if (!fileId) continue;
+    const fileId = link.startsWith('https://docs.google.com/spreadsheets/d/')
+      ? link.split('/d/')[1]?.split('/')[0] : '';
     campaigns.push({name, oid, id: fileId, status, sheetId: fileId});
   }
   CAMPAIGNS = campaigns;
@@ -727,7 +727,7 @@ async function refreshWeekly() {
 
   try {
     await loadCampaigns();
-    const running = CAMPAIGNS.filter(c => c.status === 'Running' && c.id);
+    const running = CAMPAIGNS.filter(c => (c.status === 'Running' || c.status === 'Paused') && c.id && c.sheetId);
     if (!running.length) {
       setStatus('weekly-status', 'No running campaigns found');
       setProgress('weekly-progress', 0);
@@ -818,24 +818,6 @@ async function refreshDaily() {
     const dates = [0,1,2,3].map(i => dateRowData[C_SPEND + i] || '');
     const roasD7Dates = [0,1,2,3].map(i => dateRowData[C_ROAS_D7 + i] || '');
 
-    function buildDateOffsetMap(startCol, maxCols) {
-      const map = {};
-      for (let i = 0; i < maxCols; i++) {
-        const d = dateRowData[startCol + i];
-        if (d && /\d{4}\/\d{2}\/\d{2}/.test(String(d))) map[d] = i;
-      }
-      return map;
-    }
-    const spendDateMap  = buildDateOffsetMap(C_SPEND, 4);
-    const mktDateMap    = buildDateOffsetMap(C_MKT, 7);
-    const roasD0DateMap = buildDateOffsetMap(C_ROAS_D0, 7);
-    const instDateMap   = buildDateOffsetMap(C_INST, 4);
-
-    function getByDate(row, startCol, dateMap, date) {
-      const offset = dateMap[date];
-      if (offset === undefined) return null;
-      return parseNum(row[startCol + offset]);
-    }
     const g4 = (row, c) => [0,1,2,3].map(i => parseNum(row[c+i]));
 
     dailyData = {dates, roasD7Dates, campaigns: []};
@@ -851,14 +833,14 @@ async function refreshDaily() {
       const sheetGid = sheetLinkRaw.includes('gid=') ? sheetLinkRaw.split('gid=')[1].split('&')[0].split('#')[0] : '0';
 
       if (!name || !am.toLowerCase().includes(getAm().toLowerCase())) continue;
-      const instToday = getByDate(row, C_INST, instDateMap, dates[0]);
+      const instToday = parseNum(row[C_INST]);
       if (status !== 'Running' && !(instToday > 0)) continue;
 
-      const spend  = dates.map(d => getByDate(row, C_SPEND,   spendDateMap,  d));
-      const inst   = dates.map(d => getByDate(row, C_INST,    instDateMap,   d));
-      const roasD0 = dates.map(d => getByDate(row, C_ROAS_D0, roasD0DateMap, d));
+      const spend  = g4(row, C_SPEND);
+      const inst   = g4(row, C_INST);
+      const roasD0 = g4(row, C_ROAS_D0);
       const roasD7 = g4(row, C_ROAS_D7);
-      const mkt    = dates.map(d => getByDate(row, C_MKT,     mktDateMap,    d));
+      const mkt    = g4(row, C_MKT);
 
       dailyData.campaigns.push({name, oid, status, sheetId, sheetGid, spend, inst, roasD0, roasD7, mkt});
     }
@@ -1068,8 +1050,6 @@ function renderWeekly() {
 
 /* ── sorting ── */
 let dailySort = {col: null, asc: false};
-let weeklyData = {};
-let availableWeeks = [];
 let weeklySort = {col: null, asc: false};
 
 function sortDaily(col) {
