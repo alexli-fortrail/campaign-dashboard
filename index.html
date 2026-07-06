@@ -865,9 +865,12 @@ async function refreshDaily() {
       `Source: Master registry sheet · Filtered AM = ${getAm()} · Last refreshed ${ts}`;
 
     const sel = document.getElementById('daily-date-sel');
-    sel.innerHTML = dates.map((d, i) =>
-      `<option value="${i}">${d}${i === 0 ? ' (today)' : i === 1 ? ' (yesterday)' : ''}</option>`
-    ).join('');
+    sel.innerHTML = dates
+      .map((d, i) => ({d, i}))
+      .filter(({d}) => d)
+      .map(({d, i}) =>
+        `<option value="${i}">${d}${i === 0 ? ' (today)' : i === 1 ? ' (yesterday)' : ''}</option>`
+      ).join('');
 
     renderDaily();
     setTimeout(() => setProgress('daily-progress', 0), 600);
@@ -880,10 +883,15 @@ async function refreshDaily() {
   }
 }
 
+function resetLiveD7() {
+  liveD7Map = {};
+}
+
 function renderDaily() {
   if (!dailyData) return;
   const idx = parseInt(document.getElementById('daily-date-sel').value) || 0;
   const selectedDate = dailyData.dates[idx] || '';
+  console.log('renderDaily: idx=', idx, 'sel.value=', document.getElementById('daily-date-sel').value, 'dates=', dailyData.dates, 'spend[0][0]=', dailyData.campaigns[0]?.spend[0], 'spend[idx][0]=', dailyData.campaigns[0]?.spend[idx]);
 
   if (renderDaily._lastDate && renderDaily._lastDate !== selectedDate) resetLiveD7();
   renderDaily._lastDate = selectedDate;
