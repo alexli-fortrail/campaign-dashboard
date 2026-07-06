@@ -452,6 +452,8 @@ tr:hover .freeze-1 { background: var(--bg2); }
 
 <script>
 // ── Config — loaded from localStorage ──
+const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzO293LSvkdbPMYbX3AMZ3h5yIfBTr7qpH3ic9g0fU8t5a5Ccp1b7kFn0TKr24zZOP7ow/exec';
+
 const DEFAULT_CONFIG = {
   apiKey:   '',
   am:       '',
@@ -635,571 +637,44 @@ function fmtDate(dateStr) {
 }
 
 async function fetchQualityData() {
-  // Fetch the quality sheet (importranged copy, gid=0)
-  const amTab = getAm() || 'alex.li';
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${getQualityId()}/values/${encodeURIComponent(`'${amTab}'!A1:DL5000`)}?key=${getApiKey()}`;
-  const res = await fetch(url);
+  qualityMap = {};
+  // Use Web App (Service Account) to fetch quality data
+  const url = `${WEBAPP_URL}?action=quality&am=${encodeURIComponent(getAm())}`;
+  const res = await fetchWithRetry(url);
   if (!res.ok) throw new Error(`Quality sheet error: ${res.status}`);
   const json = await res.json();
-  const rows = json.values || [];
+  if (json.error) throw new Error(json.error);
 
-  // Find header row — look for row with 'oid' and 'date' columns
-  let headerIdx = -1;
-  let colMap = {};
-  for (let i = 0; i < Math.min(rows.length, 10); i++) {
-    const r = rows[i];
-    const oidCol = r.findIndex(c => c && c.toLowerCase().trim() === 'oid');
-    if (oidCol >= 0) {
-      headerIdx = i;
-      r.forEach((c, ci) => { colMap[c.trim()] = ci; });
-      break;
-    }
-  }
-  if (headerIdx === -1) throw new Error('Quality sheet header not found');
-
-  const oidCol   = colMap['oid']                     ?? -1;
-  const dateCol  = colMap['date']                    ?? -1;
-  if (oidCol === -1 || dateCol === -1) {
-    throw new Error("Quality sheet is missing required columns 'oid' or 'date'. Check the sheet header row.");
-  }
-  const invCol   = colMap['invalid_ratio_mmp']       ?? -1;
-  const distCol  = colMap['distribution_outlier_ratio'] ?? -1;
-  // PA_ratio appears twice; find last occurrence (actual ratio, not score)
-  const paCol    = rows[headerIdx].reduce((last, c, ci) => c.trim() === 'PA_ratio' ? ci : last, -1);
-  const ctcvCvrCol  = colMap['CTCV_CVR'] ?? -1;
-  const ctcvRatioCol  = colMap['CTCV_ratio_appier_valid'] ?? -1;
-  const invAppierCol  = colMap['invalid_ratio_appier'] ?? -1;
-
-  qualityMap = {};
-  for (let i = headerIdx + 1; i < rows.length; i++) {
-    const r = rows[i];
-    if (!r[oidCol] || !r[dateCol]) continue;
-    const key = `${r[oidCol].trim()}_${r[dateCol].trim()}`;
+  const webRows = json.rows || [];
+  for (const r of webRows) {
+    if (!r.oid || !r.date) continue;
+    const key = `${r.oid}_${r.date}`;
     qualityMap[key] = {
-      invalid:   parseNum(r[invCol]),
-      dist:      parseNum(r[distCol]),
-      pa:        parseNum(r[paCol]),
-      ctcvCvr:   parseNum(r[ctcvCvrCol]),
-      ctcvRatio:  parseNum(r[ctcvRatioCol]),
-      invAppier:  parseNum(r[invAppierCol]),
+      invalid:   parseNum(r.invalid),
+      invAppier: parseNum(r.invAppier),
+      dist:      parseNum(r.dist),
+      pa:        parseNum(r.pa),
+      ctcvCvr:   parseNum(r.ctcvCvr),
+      ctcvRatio: parseNum(r.ctcvRatio),
     };
   }
-  const keys = Object.keys(qualityMap);
-  console.log('Quality map sample keys:', keys.slice(0,3));
-  return keys.length;
+  return webRows.length;
 }
-
-/* ── Google Sheets API ── */
-async function fetchRange(sheetId, range) {
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(range)}?key=${getApiKey()}`;
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  return data.values || [];
-}
-
-/* ── DAILY DATA ── */
-let dailyData = null;
-
-async function refreshDaily() {
-  if (!getApiKey() || !getMasterId() || !getAm()) {
-    setStatus('daily-status', '⚠ Please configure your settings first (click ⚙ Settings tab)');
-    return;
-  }
-  setStatus('daily-status', 'Fetching master sheet + quality data...', true);
-  setProgress('daily-progress', 5);
-  if (getQualityId()) {
-    try {
-      const qCount = await fetchQualityData();
-    console.log(`Quality data loaded: ${qCount} records`);
-    } catch(e) {
-      console.error('Quality data failed:', e.message);
-      setStatus('daily-status', `Warning: quality data unavailable (${e.message}) — other metrics still loading`, true);
-    }
-  }
-  setProgress('daily-progress', 10);
-  document.getElementById('daily-table').innerHTML = '<tr class="empty-row"><td colspan="15">Loading...</td></tr>';
-  document.getElementById('daily-summary').innerHTML = '';
-
-  try {
-    setProgress('daily-progress', 30);
-    // Fetch main data + col E (sheet links) separately since hyperlinks need raw URL
-    const [singleRes, sheetLinkRes] = await Promise.all([
-      fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${getMasterId()}/values/${encodeURIComponent('Index!A1:CK2000')}?key=${getApiKey()}`),
-      fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${getMasterId()}/values/${encodeURIComponent('Index!E1:E2000')}?key=${getApiKey()}&valueRenderOption=UNFORMATTED_VALUE`)
-    ]);
-    if (!singleRes.ok) throw new Error(`Sheets API error: ${singleRes.status}`);
-    const json = await singleRes.json();
-    const allRows = json.values || [];
-    const sheetLinkJson = sheetLinkRes.ok ? await sheetLinkRes.json() : {values:[]};
-    const sheetLinkRows = sheetLinkJson.values || [];
-
-    setProgress('daily-progress', 70);
-
-    // Column indices (0-based)
-    const C_NAME=0, C_OID=1, C_STATUS=2, C_SHEET_LINK=4, C_AM=getAmColIdx();
-    const C_MKT=19;
-    const C_ROAS_D0=27, C_ROAS_D7=42;
-    const C_SPEND=69, C_INST=80;
-
-    // Find the date row — scan first 5 rows for YYYY/MM/DD in spend col
-    let dateRowIdx = -1;
-    for (let i = 0; i < Math.min(allRows.length, 5); i++) {
-      const row = allRows[i] || [];
-      if (row[C_SPEND] && /\d{4}\/\d{2}\/\d{2}/.test(String(row[C_SPEND]))) {
-        dateRowIdx = i;
-        break;
-      }
-    }
-    const dateRowData = dateRowIdx >= 0 ? allRows[dateRowIdx] : [];
-    const dates = [0,1,2,3].map(i => dateRowData[C_SPEND + i] || '');
-    const roasD7Dates = [0,1,2,3].map(i => dateRowData[C_ROAS_D7 + i] || '');
-
-    // Build per-column date→offset maps for columns that may lag (e.g. ROAS D7)
-    function buildDateOffsetMap(startCol, maxCols) {
-      const map = {};
-      for (let i = 0; i < maxCols; i++) {
-        const d = dateRowData[startCol + i];
-        if (d && /\d{4}\/\d{2}\/\d{2}/.test(String(d))) map[d] = i;
-      }
-      return map;
-    }
-    const spendDateMap  = buildDateOffsetMap(C_SPEND,   4);
-    const mktDateMap    = buildDateOffsetMap(C_MKT,     7);
-    const roasD0DateMap = buildDateOffsetMap(C_ROAS_D0, 7);
-    const instDateMap   = buildDateOffsetMap(C_INST,    4);
-
-    // Helper: get value for a specific date from a column group
-    function getByDate(row, startCol, dateMap, date) {
-      const offset = dateMap[date];
-      if (offset === undefined) return null;
-      return parseNum(row[startCol + offset]);
-    }
-    function getByDatePair(row, startCol, dateMap, date, prevDate) {
-      return [getByDate(row, startCol, dateMap, date), getByDate(row, startCol, dateMap, prevDate)];
-    }
-
-    // Helper: get 4 values starting at col c for a row (for columns without date maps)
-    const g4 = (row, c) => [0,1,2,3].map(i => parseNum(row[c+i]));
-
-    dailyData = {dates, roasD7Dates, campaigns: []};
-
-    for (let i = 2; i < allRows.length; i++) {
-      const row = allRows[i] || [];
-      const name   = String(row[C_NAME]   || '').trim();
-      const oid    = String(row[C_OID]    || '').trim();
-      const status = String(row[C_STATUS] || '').trim();
-      const am     = String(row[C_AM]     || '').trim();
-      const sheetLinkRaw = String((sheetLinkRows[i] || [])[0] || row[C_SHEET_LINK] || '').trim();
-      const sheetId = sheetLinkRaw.includes('/d/') ? sheetLinkRaw.split('/d/')[1].split('/')[0] : '';
-      // Extract gid for correct tab targeting
-      const sheetGid = sheetLinkRaw.includes('gid=') ? sheetLinkRaw.split('gid=')[1].split('&')[0].split('#')[0] : '0';
-
-      if (!name || !am.toLowerCase().includes(getAm().toLowerCase())) continue;
-      const instToday = getByDate(row, C_INST, instDateMap, dates[0]);
-      if (status !== 'Running' && !(instToday > 0)) continue;
-
-      // Use date-based lookup to handle columns with different date ranges
-      const spend  = dates.map(d => getByDate(row, C_SPEND,   spendDateMap,  d));
-      const inst   = dates.map(d => getByDate(row, C_INST,    instDateMap,   d));
-      const roasD0 = dates.map(d => getByDate(row, C_ROAS_D0, roasD0DateMap, d));
-      const roasD7 = g4(row, C_ROAS_D7); // fixed offset — D7 lags by ~7 days, use as-is
-      const mkt    = dates.map(d => getByDate(row, C_MKT,     mktDateMap,    d));
-
-      dailyData.campaigns.push({name, oid, status, sheetId, sheetGid, spend, inst, roasD0, roasD7, mkt});
-    }
-
-    setProgress('daily-progress', 100);
-    const ts = new Date().toLocaleTimeString();
-    setStatus('daily-status', `${dailyData.campaigns.length} campaigns loaded · ${ts}`);
-    document.getElementById('daily-note').textContent =
-      `Source: Master registry sheet · Filtered AM = ${getAm()} · Last refreshed ${ts}`;
-
-    // Update date selector with actual dates
-    const sel = document.getElementById('daily-date-sel');
-    sel.innerHTML = dates.map((d, i) =>
-      `<option value="${i}">${d}${i === 0 ? ' (today)' : i === 1 ? ' (yesterday)' : ''}</option>`
-    ).join('');
-
-    renderDaily();
-  } catch(e) {
-    setProgress('daily-progress', 0);
-    setStatus('daily-status', `Error: ${e.message}`);
-    document.getElementById('daily-table').innerHTML =
-      `<tr class="empty-row"><td colspan="15" style="color:var(--red)">${e.message}</td></tr>`;
-  }
-}
-
-function renderDaily() {
-  if (!dailyData) return;
-  const idx = parseInt(document.getElementById('daily-date-sel').value) || 0;
-  // Reset live D7 if date changed
-  const selectedDate = dailyData.dates[idx] || '';
-  if (renderDaily._lastDate && renderDaily._lastDate !== selectedDate) resetLiveD7();
-  renderDaily._lastDate = selectedDate;
-
-  // Update D7 mature header with actual date
-  const d7MatureDate = dailyData.roasD7Dates ? dailyData.roasD7Dates[idx] || '' : '';
-  const thD7 = document.getElementById('th-roas-d7-mature');
-  if (thD7) thD7.innerHTML = `ROAS D7<br><span style="font-weight:400;font-size:10px">${d7MatureDate ? d7MatureDate + ' ↕' : 'mature ↕'}</span>`;
-  const prevIdx = idx + 1;
-  const hasPrev = prevIdx < 4;
-
-  let totalSpend = 0, totalInst = 0, spendCount = 0, instCount = 0;
-
-  let sortedCampaigns = [...dailyData.campaigns];
-  if (dailySort.col) {
-    sortedCampaigns.sort((a, b) => {
-      const getVal = c => {
-        if (dailySort.col === 'spend')  return c.spend[idx] ?? -Infinity;
-        if (dailySort.col === 'inst')   return c.inst[idx]  ?? -Infinity;
-        if (dailySort.col === 'roasD0') return c.roasD0[idx] ?? -Infinity;
-        if (dailySort.col === 'roasD7') return c.roasD7[idx] ?? -Infinity;
-        if (dailySort.col === 'ctcv') { const dateStr = dailyData.dates[idx] ? fmtDate(dailyData.dates[idx]) : ''; const q = qualityMap[`${c.oid}_${dateStr}`]; return q?.ctcvRatio ?? -Infinity; }
-        if (dailySort.col === 'mkt')    return c.mkt ? (c.mkt[idx] ?? -Infinity) : -Infinity;
-        if (dailySort.col === 'invalid' || dailySort.col === 'dist' || dailySort.col === 'pa') {
-          const dateStr = dailyData.dates[idx] ? fmtDate(dailyData.dates[idx]) : '';
-          const q = qualityMap[`${c.oid}_${dateStr}`];
-          if (dailySort.col === 'invalid') return q?.invalid ?? -Infinity;
-          if (dailySort.col === 'dist')    return q?.dist    ?? -Infinity;
-          if (dailySort.col === 'invAppier') return q?.invAppier ?? -Infinity;
-          if (dailySort.col === 'pa')      return q?.pa      ?? -Infinity;
-          if (dailySort.col === 'ctcvCvr') return q?.ctcvCvr ?? -Infinity;
-        }
-        return 0;
-      };
-      return dailySort.asc ? getVal(a) - getVal(b) : getVal(b) - getVal(a);
-    });
-  }
-  const rows = sortedCampaigns.map(c => {
-    const spend  = c.spend[idx];
-    const pSpend = hasPrev ? c.spend[prevIdx] : null;
-    const inst   = c.inst[idx];
-    const pInst  = hasPrev ? c.inst[prevIdx] : null;
-    const rD0    = c.roasD0[idx];
-    const pRD0   = hasPrev ? c.roasD0[prevIdx] : null;
-    const rD7    = c.roasD7[idx];
-    const pRD7   = hasPrev ? c.roasD7[prevIdx] : null;
-    // Quality data lookup: join by OID + date
-    const dateStr = dailyData.dates[idx] ? fmtDate(dailyData.dates[idx]) : '';
-    const qkey = `${c.oid}_${dateStr}`;
-    const qdata = qualityMap[qkey] || null;
-
-    const ctcv   = qdata ? qdata.ctcvRatio : null;
-    const pCtcv  = null; // CTCV from quality sheet — no DoD comparison
-    const mkt    = c.mkt ? c.mkt[idx] : null;
-    const pMkt   = hasPrev && c.mkt ? c.mkt[prevIdx] : null;
-
-    if (spend != null) { totalSpend += spend; spendCount++; }
-    if (inst != null)  { totalInst += inst;  instCount++; }
-
-    const statusBadge = c.status === 'Running'
-      ? '<span class="badge badge-green">Running</span>'
-      : `<span class="badge badge-amber">${c.status}</span>`;
-
-    const ctcvFlag = ctcv == null ? '—' : ctcv < 35
-      ? `<span style="color:var(--red)">${p(ctcv)}%</span>`
-      : `${p(ctcv)}%`;
-
-    return `<tr>
-      <td class="freeze-1" title="${c.name}">${c.name.replace(/\[CN\]\s*/,'')}</td>
-      <td style="font-size:11px;color:var(--text3)">${c.oid}</td>
-      <td>${statusBadge}</td>
-      <td>${metricCell(spend, pSpend, fmt$, false)}</td>
-      <td>${metricCell(inst, pInst, fmtInt, false)}</td>
-      <td>${metricCell(rD0, pRD0, v => p(v)+'%', false)}</td>
-      <td>${metricCell(rD7, pRD7, v => p(v)+'%', false)}</td>
-      <td>${(() => {
-        const live = liveD7Map[c.oid];
-        if (!live) return c.sheetId
-          ? `<button class="live-d7-btn" data-oid="${c.oid}" data-sheetid="${c.sheetId}" data-gid="${c.sheetGid || '0'}" data-date="${dailyData.dates[idx]}" data-tabhint="${c.name.replace(/"/g,'&quot;')}" style="font-size:10px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--border2);background:var(--bg);color:var(--text2);cursor:pointer">↻</button>`
-          : '<span style="color:var(--text3)">—</span>';
-        if (live.loading) return '<span style="color:var(--text3);font-size:11px">…</span>';
-        if (live.error) return '<span style="color:var(--text3);font-size:10px" title="' + live.error + '">—</span>';
-        return '<span style="color:var(--green);font-weight:500">' + live.roasD7 + '</span>';
-      })()}</td>
-      <td>${ctcvFlag}</td>
-      <td>${metricCell(mkt, pMkt, v => p(v)+'%')}</td>
-      <td>${fmtQuality(qdata?.invalid)}</td>
-      <td>${fmtQuality(qdata?.invAppier)}</td>
-      <td>${fmtQuality(qdata?.dist)}</td>
-      <td>${fmtQuality(qdata?.pa)}</td>
-      <td>${fmtCtcvCvr(qdata?.ctcvCvr)}</td>
-    </tr>`;
-  });
-
-  document.getElementById('daily-table').innerHTML = rows.join('') ||
-    '<tr class="empty-row"><td colspan="15">No campaigns found</td></tr>';
-
-  document.getElementById('daily-summary').innerHTML = `
-    <div class="mcard"><div class="mcard-label">Total spend</div><div class="mcard-val">${fmt$(totalSpend)}</div></div>
-    <div class="mcard"><div class="mcard-label">Total installs</div><div class="mcard-val">${fmtInt(totalInst)}</div></div>
-    <div class="mcard"><div class="mcard-label">Campaigns</div><div class="mcard-val">${dailyData.campaigns.length}</div></div>
-    <div class="mcard"><div class="mcard-label">Date</div><div class="mcard-val" style="font-size:13px">${dailyData.dates[idx] || '—'}</div></div>
-  `;
-}
-
-/* ── WEEKLY DATA ── */
-let weeklyData = {};
-let availableWeeks = [];
-
-async function fetchWithRetry(url, retries=3, delay=2000) {
-  for (let i = 0; i <= retries; i++) {
-    const res = await fetch(url);
-    if (res.status === 429 && i < retries) {
-      await new Promise(r => setTimeout(r, delay * (i + 1)));
-      continue;
-    }
-    return res;
-  }
-}
-
-async function fetchWeeklySheet(campaign) {
-  const metaUrl = `https://sheets.googleapis.com/v4/spreadsheets/${campaign.id}?key=${getApiKey()}&fields=sheets.properties`;
-  const metaRes = await fetchWithRetry(metaUrl);
-  if (!metaRes.ok) throw new Error(`Meta ${metaRes.status}`);
-  const meta = await metaRes.json();
-
-  // Find weekly/monthly tab
-  const sheets = meta.sheets || [];
-  let weeklySheet = sheets.find(s =>
-    /weekly|monthly/i.test(s.properties.title)
-  ) || sheets[0];
-  const tabName = weeklySheet.properties.title;
-
-  // Fetch enough rows to get the weekly cohort table — it's at the bottom
-  // Get last 200 rows of the sheet
-  const range = `'${tabName}'!A1:Z300`;
-  const valUrl = `https://sheets.googleapis.com/v4/spreadsheets/${campaign.id}/values/${encodeURIComponent(range)}?key=${getApiKey()}`;
-  const valRes = await fetchWithRetry(valUrl);
-  if (!valRes.ok) throw new Error(`Values ${valRes.status}`);
-  const valJson = await valRes.json();
-  const rows = valJson.values || [];
-
-  // Find the weekly cohort table
-  // Look for a row that has "Corhort" or "Cohort" in col A and week ranges in cols B+
-  let weekHeaderRow = -1;
-  for (let i = 0; i < rows.length; i++) {
-    const r = rows[i];
-    if (r[0] && /corhort|cohort/i.test(r[0])) {
-      // Check if the next columns look like week ranges (contain " - ")
-      const hasWeekRanges = r.slice(1).some(c => c && c.includes(' - '));
-      if (hasWeekRanges) { weekHeaderRow = i; break; }
-    }
-  }
-  if (weekHeaderRow === -1) throw new Error('Weekly table not found');
-
-  const headerRow = rows[weekHeaderRow];
-  const weekCols = headerRow.slice(1).filter(c => c && c.includes(' - '));
-  const weeks = weekCols;
-
-  // Parse metric rows below the header
-  const metrics = {};
-  for (let i = weekHeaderRow + 1; i < Math.min(rows.length, weekHeaderRow + 12); i++) {
-    const r = rows[i];
-    if (!r[0]) continue;
-    metrics[r[0].trim()] = r.slice(1, weeks.length + 1);
-  }
-
-  // Build structured data
-  const result = weeks.map((w, wi) => {
-    const getVal = (keys) => {
-      for (const k of keys) {
-        if (metrics[k] && metrics[k][wi] != null && metrics[k][wi] !== '') {
-          return parseNum(metrics[k][wi]);
-        }
-      }
-      return null;
-    };
-    return {
-      range: w,
-      installs: getVal(['Last 7 Days Installs','Last 7 Days Install']),
-      spend:    getVal(['Last 7 Days Spend','Last 7 days Spend']),
-      roasD0:   getVal(['D0']),
-      roasD7:   getVal(['7D','D7']),
-    };
-  });
-
-  return result;
-}
-
-async function refreshWeekly() {
-  setStatus('weekly-status', 'Loading campaign list from master sheet...', true);
-  setProgress('weekly-progress', 5);
-  document.getElementById('weekly-table').innerHTML = '<tr class="empty-row"><td colspan="5">Loading...</td></tr>';
-  document.getElementById('weekly-summary').innerHTML = '';
-  weeklyData = {};
-  availableWeeks = [];
-
-  try {
-    await loadCampaigns();
-  } catch(e) {
-    setStatus('weekly-status', `Failed to load campaign list: ${e.message}`);
-    return;
-  }
-
-  setStatus('weekly-status', `Found ${CAMPAIGNS.length} campaigns, fetching weekly data...`, true);
-  let done = 0;
-  // Fetch in batches of 2 with delay to avoid 429 rate limits
-  const batchSize = 2;
-  for (let i = 0; i < CAMPAIGNS.length; i += batchSize) {
-    const batch = CAMPAIGNS.slice(i, i + batchSize);
-    await Promise.allSettled(batch.map(async c => {
-      try {
-        const weeks = await fetchWeeklySheet(c);
-        weeklyData[c.name] = weeks;
-      } catch(e) {
-        weeklyData[c.name] = {error: e.message};
-      }
-      done++;
-      setProgress('weekly-progress', Math.round((done / CAMPAIGNS.length) * 100));
-      setStatus('weekly-status', `Loaded ${done}/${CAMPAIGNS.length} campaigns...`, true);
-    }));
-    if (i + batchSize < CAMPAIGNS.length) await new Promise(r => setTimeout(r, 2000));
-  }
-
-  // Collect all unique week ranges
-  const weekSet = new Set();
-  Object.values(weeklyData).forEach(d => {
-    if (Array.isArray(d)) d.forEach(w => { if (w.range) weekSet.add(w.range); });
-  });
-  availableWeeks = [...weekSet].sort((a, b) => {
-    const dateA = a.split(' - ')[0];
-    const dateB = b.split(' - ')[0];
-    return dateB.localeCompare(dateA);
-  });
-
-  const sel = document.getElementById('weekly-week-sel');
-  sel.innerHTML = availableWeeks.map((w, i) =>
-    `<option value="${w}"${i === 0 ? ' selected' : ''}>${w}</option>`
-  ).join('');
-
-  const ts = new Date().toLocaleTimeString();
-  setStatus('weekly-status', `${Object.keys(weeklyData).length} campaigns loaded · ${ts}`);
-  document.getElementById('weekly-note').textContent =
-    `Source: Weekly/Monthly tab from each campaign GSheet · ${getAm()} Running campaigns · Last refreshed ${ts}`;
-
-  renderWeekly();
-}
-
-function renderWeekly() {
-  const week = document.getElementById('weekly-week-sel').value;
-  if (!week) return;
-
-  const prevWeekIdx = availableWeeks.indexOf(week) + 1;
-  const prevWeek = prevWeekIdx < availableWeeks.length ? availableWeeks[prevWeekIdx] : null;
-
-  const getWeek = (campaignData, range) => {
-    if (!Array.isArray(campaignData)) return null;
-    return campaignData.find(w => w.range === range) || null;
-  };
-
-  let totalInst = 0, totalSpend = 0, roasD0Sum = 0, roasD7Sum = 0, roasCount = 0;
-  const rows = [];
-
-  CAMPAIGNS.forEach(c => {
-    const d = weeklyData[c.name];
-    if (!d) return;
-    if (d.error) { rows.push({name: c.name, err: d.error}); return; }
-
-    const curr = getWeek(d, week);
-    const prev = prevWeek ? getWeek(d, prevWeek) : null;
-    if (!curr) { rows.push({name: c.name, nodata: true}); return; }
-    // Skip paused campaigns with no installs this week
-    if (c.status === 'Paused' && !(curr.installs > 0)) return;
-
-    rows.push({name: c.name, oid: c.oid, curr, prev, status: c.status});
-    if (curr.installs != null) totalInst += curr.installs;
-    if (curr.spend != null) totalSpend += curr.spend;
-    if (curr.roasD0 != null) { roasD0Sum += curr.roasD0; roasCount++; }
-    if (curr.roasD7 != null) roasD7Sum += curr.roasD7;
-  });
-
-  // Sort rows
-  if (weeklySort.col) {
-    rows.sort((a, b) => {
-      if (!a.curr && !b.curr) return 0;
-      if (!a.curr) return 1;
-      if (!b.curr) return -1;
-      const getVal = r => {
-        if (weeklySort.col === 'installs') return r.curr.installs ?? -Infinity;
-        if (weeklySort.col === 'spend')    return r.curr.spend    ?? -Infinity;
-        if (weeklySort.col === 'roasD0')   return r.curr.roasD0   ?? -Infinity;
-        if (weeklySort.col === 'roasD7')   return r.curr.roasD7   ?? -Infinity;
-        return 0;
-      };
-      return weeklySort.asc ? getVal(a) - getVal(b) : getVal(b) - getVal(a);
-    });
-  }
-
-  document.getElementById('weekly-summary').innerHTML = `
-    <div class="mcard"><div class="mcard-label">Total installs</div><div class="mcard-val">${fmtInt(totalInst)}</div></div>
-    <div class="mcard"><div class="mcard-label">Total spend</div><div class="mcard-val">${fmt$(totalSpend)}</div></div>
-    <div class="mcard"><div class="mcard-label">Avg ROAS D0</div><div class="mcard-val">${roasCount ? p(roasD0Sum/roasCount)+'%' : '—'}</div></div>
-    <div class="mcard"><div class="mcard-label">Avg ROAS D7</div><div class="mcard-val">${roasCount ? p(roasD7Sum/roasCount)+'%' : '—'}</div></div>
-    <div class="mcard"><div class="mcard-label">Campaigns</div><div class="mcard-val">${rows.filter(r => r.curr).length}</div></div>
-  `;
-
-  document.getElementById('weekly-table').innerHTML = rows.map(r => {
-    if (r.err) return `<tr><td class="freeze-1">${r.name.replace(/\[CN\]\s*/,'')}</td><td></td><td colspan="4" class="err-cell">Error: ${r.err}</td></tr>`;
-    if (r.nodata) return `<tr><td class="freeze-1" style="color:var(--text3)">${r.name.replace(/\[CN\]\s*/,'')}</td><td></td><td colspan="4" style="color:var(--text3);font-size:11px;text-align:center">no data for this week</td></tr>`;
-    const {curr, prev} = r;
-    const pausedBadge = r.status === 'Paused' ? ' <span class="badge badge-amber">Paused</span>' : '';
-    return `<tr>
-      <td class="freeze-1" title="${r.name}">${r.name.replace(/\[CN\]\s*/,'')}${pausedBadge}</td>
-      <td style="font-size:11px;color:var(--text3)">${r.oid || ''}</td>
-      <td>${metricCell(curr.installs, prev?.installs, fmtInt)}</td>
-      <td>${metricCell(curr.spend, prev?.spend, fmt$)}</td>
-      <td>${metricCell(curr.roasD0, prev?.roasD0, v => p(v)+'%')}</td>
-      <td>${metricCell(curr.roasD7, prev?.roasD7, v => p(v)+'%')}</td>
-    </tr>`;
-  }).join('') || '<tr class="empty-row"><td colspan="6">No data for this week</td></tr>';
-}
-
-
-
-
 
 /* ── LIVE D7 ROAS ── */
 let liveD7Map = {}; // key: oid → value: { roasD7, loading, error }
 
 async function fetchLiveD7(campaignOid, sheetId, gid, targetDate, tabHint) {
-  console.log('fetchLiveD7 called:', campaignOid, 'gid:', gid, targetDate, 'tabHint:', tabHint);
   liveD7Map[campaignOid] = { loading: true };
   renderDaily();
 
   try {
-    // Try multiple range strategies in order until one returns data
-    const candidates = [];
-    if (tabHint) candidates.push(`'${tabHint.replace(/'/g, "\'")}'!A1:K500`);
-    candidates.push('A1:K500'); // default first tab
-
-    let rows = [];
-    for (const range of candidates) {
-      try {
-        const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodeURIComponent(range)}?key=${getApiKey()}`;
-        console.log('Trying range:', range);
-        const res = await fetch(url);
-        if (!res.ok) { console.warn('Range failed:', range, res.status); continue; }
-        const json = await res.json();
-        const r = json.values || [];
-        if (r.length > 2) { rows = r; console.log('Got', r.length, 'rows from:', range); break; }
-      } catch(e) { continue; }
-    }
-    console.log('fetchLiveD7 total rows:', rows.length);
-
-    // Step 3: find row matching targetDate — check col A (index 0) and col G (index 6)
-    let found = null;
-    for (const row of rows) {
-      const dateA = row[0] ? row[0].trim() : '';
-      const dateG = row[6] ? row[6].trim() : '';
-      if (dateA === targetDate || dateG === targetDate) {
-        found = row[10]; // col K = ROAS D7
-        console.log('Date match found:', dateA || dateG, '→ ROAS D7:', found);
-        break;
-      }
-    }
-
+    const url = `${WEBAPP_URL}?action=liveD7&sheetId=${encodeURIComponent(sheetId)}&date=${encodeURIComponent(targetDate)}&tabHint=${encodeURIComponent(tabHint || '')}`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (json.error) throw new Error(json.error);
+    const found = json.roasD7;
     if (found != null && found !== '') {
       liveD7Map[campaignOid] = { roasD7: found };
     } else {
@@ -1210,23 +685,6 @@ async function fetchLiveD7(campaignOid, sheetId, gid, targetDate, tabHint) {
   }
   renderDaily();
 }
-
-function resetLiveD7() {
-  liveD7Map = {};
-}
-
-// Event delegation for live D7 buttons
-document.addEventListener('click', function(e) {
-  const btn = e.target.closest('.live-d7-btn');
-  if (!btn) return;
-  const oid = btn.dataset.oid;
-  const sheetId = btn.dataset.sheetid;
-  const gid = btn.dataset.gid || '0';
-  const date = btn.dataset.date;
-  const tabHint = btn.dataset.tabhint || '';
-  if (oid && sheetId && date) fetchLiveD7(oid, sheetId, gid, date, tabHint);
-});
-
 
 async function fetchAllLiveD7() {
   if (!dailyData || !dailyData.campaigns.length) return;
@@ -1249,6 +707,67 @@ async function fetchAllLiveD7() {
   }
 
   if (btn) { btn.disabled = false; btn.textContent = '↻ Fetch all live D7'; }
+}
+
+
+/* ── WEEKLY DATA ── */
+let weeklyData = {};
+let weeklySort = { col: null, asc: false };
+
+async function fetchWeeklySheet(campaign) {
+  // Use Web App (Service Account) to fetch weekly data
+  const url = `${WEBAPP_URL}?action=weekly&sheetId=${encodeURIComponent(campaign.id)}&tabHint=${encodeURIComponent(campaign.name || '')}`;
+  const res = await fetchWithRetry(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const json = await res.json();
+  if (json.error) throw new Error(json.error);
+  return json.weeks || [];
+}
+
+async function refreshWeekly() {
+  setStatus('weekly-status', 'Loading campaigns...', true);
+  setProgress('weekly-progress', 5);
+
+  try {
+    await loadCampaigns();
+    const running = CAMPAIGNS.filter(c => c.status === 'Running' && c.id);
+    if (!running.length) {
+      setStatus('weekly-status', 'No running campaigns found');
+      setProgress('weekly-progress', 0);
+      return;
+    }
+
+    weeklyData = {};
+    let done = 0;
+    const batchSize = 2;
+
+    for (let i = 0; i < running.length; i += batchSize) {
+      const batch = running.slice(i, i + batchSize);
+      await Promise.allSettled(batch.map(async c => {
+        try {
+          const weeks = await fetchWeeklySheet(c);
+          if (weeks && weeks.length) weeklyData[c.name] = weeks;
+        } catch(e) {
+          console.warn('Weekly failed for', c.name, e.message);
+        }
+      }));
+      done += batch.length;
+      setProgress('weekly-progress', Math.round(10 + (done / running.length) * 85));
+      setStatus('weekly-status', `Loading ${done}/${running.length} campaigns...`, true);
+      if (i + batchSize < running.length) await new Promise(r => setTimeout(r, 2000));
+    }
+
+    setProgress('weekly-progress', 100);
+    const ts = new Date().toLocaleTimeString();
+    setStatus('weekly-status', `${Object.keys(weeklyData).length} campaigns loaded · ${ts}`);
+    populateWeekSelector();
+    renderWeekly();
+    setTimeout(() => setProgress('weekly-progress', 0), 600);
+
+  } catch(e) {
+    setStatus('weekly-status', `Error: ${e.message}`);
+    setProgress('weekly-progress', 0);
+  }
 }
 
 /* ── sorting ── */
