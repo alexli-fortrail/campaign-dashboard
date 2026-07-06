@@ -526,19 +526,22 @@ let CAMPAIGNS = []; // dynamically loaded from master sheet
 
 async function loadCampaigns() {
   // Fetch cols A (name), C (status), E (gsheet link), G (AM) from master sheet
-  const batchUrl = `https://sheets.googleapis.com/v4/spreadsheets/${getMasterId()}/values:batchGet?key=${getApiKey()}` +
-    `&ranges=${encodeURIComponent('Index!A1:B2000')}` +
-    `&ranges=${encodeURIComponent('Index!C1:C2000')}` +
-    `&ranges=${encodeURIComponent('Index!E1:E2000')}` +
-    `&ranges=${encodeURIComponent('Index!G1:G2000')}`;
-  const res = await fetch(batchUrl);
-  if (!res.ok) throw new Error(`Master sheet error: ${res.status}`);
-  const json = await res.json();
+  // Fetch name/status/AM with FORMATTED_VALUE, col E (links) with UNFORMATTED_VALUE
+  const [batchRes, linkRes] = await Promise.all([
+    fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getMasterId()}/values:batchGet?key=${getApiKey()}` +
+      `&ranges=${encodeURIComponent('Index!A1:B2000')}` +
+      `&ranges=${encodeURIComponent('Index!C1:C2000')}` +
+      `&ranges=${encodeURIComponent('Index!G1:G2000')}`),
+    fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getMasterId()}/values/${encodeURIComponent('Index!E1:E2000')}?key=${getApiKey()}&valueRenderOption=UNFORMATTED_VALUE`)
+  ]);
+  if (!batchRes.ok) throw new Error(`Master sheet error: ${batchRes.status}`);
+  const json = await batchRes.json();
   const vr = json.valueRanges;
   const nameRows   = vr[0].values || [];
   const statusRows = vr[1].values || [];
-  const linkRows   = vr[2].values || [];
-  const amRows     = vr[3].values || [];
+  const amRows     = vr[2].values || [];
+  const linkJson   = linkRes.ok ? await linkRes.json() : {values:[]};
+  const linkRows   = linkJson.values || [];
 
   const campaigns = [];
   for (let i = 0; i < nameRows.length; i++) {
