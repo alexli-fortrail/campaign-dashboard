@@ -527,10 +527,10 @@ let CAMPAIGNS = []; // dynamically loaded from master sheet
 async function loadCampaigns() {
   // Fetch cols A (name), C (status), E (gsheet link), G (AM) from master sheet
   const batchUrl = `https://sheets.googleapis.com/v4/spreadsheets/${getMasterId()}/values:batchGet?key=${getApiKey()}` +
-    `&ranges=${encodeURIComponent('A1:B500')}` +
-    `&ranges=${encodeURIComponent('C1:C500')}` +
-    `&ranges=${encodeURIComponent('E1:E500')}` +
-    `&ranges=${encodeURIComponent('G1:G500')}`;
+    `&ranges=${encodeURIComponent('Index!A1:B2000')}` +
+    `&ranges=${encodeURIComponent('Index!C1:C2000')}` +
+    `&ranges=${encodeURIComponent('Index!E1:E2000')}` +
+    `&ranges=${encodeURIComponent('Index!G1:G2000')}`;
   const res = await fetch(batchUrl);
   if (!res.ok) throw new Error(`Master sheet error: ${res.status}`);
   const json = await res.json();
