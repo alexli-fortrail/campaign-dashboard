@@ -416,24 +416,12 @@ tr:hover .freeze-1 { background: var(--bg2); }
       <div class="settings-hint">Your email prefix (without @appier.com) — used to filter campaigns assigned to you.</div>
     </div>
 
-    <div class="settings-group">
-      <label class="settings-label">Google Sheets API Key</label>
-      <input class="settings-input" id="cfg-apikey" type="password" placeholder="AIzaSy..." autocomplete="off" />
-      <div class="settings-hint">Create a read-only API key in <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color:var(--blue)">Google Cloud Console</a> with Sheets API enabled. Set Application Restrictions to None.</div>
-    </div>
-
     <hr class="settings-divider">
 
     <div class="settings-group">
       <label class="settings-label">Master Registry Sheet URL</label>
       <input class="settings-input" id="cfg-master" type="text" placeholder="https://docs.google.com/spreadsheets/d/..." />
-      <div class="settings-hint">The main campaign registry sheet. Must be shared as "Anyone with the link → Viewer".</div>
-    </div>
-
-    <div class="settings-group">
-      <label class="settings-label">Quality Data Sheet URL</label>
-      <input class="settings-input" id="cfg-quality" type="text" placeholder="https://docs.google.com/spreadsheets/d/..." />
-      <div class="settings-hint">The quality metrics sheet (invalid ratio, PA ratio, etc). Must be shared as "Anyone with the link → Viewer". Leave blank to disable quality metrics.</div>
+      <div class="settings-hint">The main campaign registry sheet for your region. Ask your team lead if you're not sure which one to use.</div>
     </div>
 
     <div class="settings-group">
@@ -455,10 +443,8 @@ tr:hover .freeze-1 { background: var(--bg2); }
 const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzO293LSvkdbPMYbX3AMZ3h5yIfBTr7qpH3ic9g0fU8t5a5Ccp1b7kFn0TKr24zZOP7ow/exec';
 
 const DEFAULT_CONFIG = {
-  apiKey:   '',
   am:       '',
   masterId: '',
-  qualityId:'',
   amCol:    'G',
 };
 
@@ -477,10 +463,8 @@ function loadConfig() {
 
 function saveSettings() {
   const cfg = {
-    apiKey:    document.getElementById('cfg-apikey').value.trim(),
     am:        document.getElementById('cfg-am').value.trim(),
     masterId:  extractSheetId(document.getElementById('cfg-master').value.trim()),
-    qualityId: extractSheetId(document.getElementById('cfg-quality').value.trim()),
     amCol:     document.getElementById('cfg-amcol').value.trim().toUpperCase() || 'G',
   };
   localStorage.setItem('dashConfig', JSON.stringify(cfg));
@@ -498,24 +482,20 @@ function updateHeaderSub() {
 
 function populateSettingsForm() {
   const cfg = loadConfig();
-  document.getElementById('cfg-apikey').value = cfg.apiKey || '';
   document.getElementById('cfg-am').value     = cfg.am || '';
   document.getElementById('cfg-master').value = cfg.masterId ? 'https://docs.google.com/spreadsheets/d/' + cfg.masterId : '';
-  document.getElementById('cfg-quality').value= cfg.qualityId ? 'https://docs.google.com/spreadsheets/d/' + cfg.qualityId : '';
   document.getElementById('cfg-amcol').value  = cfg.amCol || 'G';
 }
 
 function checkFirstRun() {
   const cfg = loadConfig();
-  const isNew = !cfg.apiKey || !cfg.am || !cfg.masterId;
+  const isNew = !cfg.am || !cfg.masterId;
   document.getElementById('first-run-banner').classList.toggle('show', isNew);
   return isNew;
 }
 
 // Dynamic getters — always read from current config
-function getApiKey()   { return loadConfig().apiKey; }
 function getMasterId() { return loadConfig().masterId; }
-function getQualityId(){ return loadConfig().qualityId; }
 function getAm()       { return loadConfig().am; }
 function getAmColIdx() {
   const col = loadConfig().amCol || 'G';
@@ -528,22 +508,19 @@ let CAMPAIGNS = []; // dynamically loaded from master sheet
 let weeklyData = {};
 let availableWeeks = [];
 
-async function loadCampaigns() {
-  // Use single wide range A1:G2000 to keep row indices aligned
-  // Col E (GSheet link) needs UNFORMATTED_VALUE to get full URL
-  const amCol = loadConfig().amCol || 'G';
-  const amColIdx = getAmColIdx(); // 0-based
-  const maxCol = amColIdx >= 6 ? amCol : 'G'; // ensure we fetch at least to col G
+// Fetch the master registry sheet via the Apps Script Web App (service account),
+// instead of calling sheets.googleapis.com directly with an API key.
+async function fetchMasterData() {
+  const url = `${WEBAPP_URL}?action=master&masterId=${encodeURIComponent(getMasterId())}`;
+  const json = await jsonpRequest(url);
+  if (json.error) throw new Error(json.error);
+  return json; // { values, links }
+}
 
-  const [mainRes, linkRes] = await Promise.all([
-    fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${getMasterId()}/values/${encodeURIComponent('Index!A1:' + maxCol + '2000')}?key=${getApiKey()}`),
-    fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${getMasterId()}/values/${encodeURIComponent('Index!E1:E2000')}?key=${getApiKey()}&valueRenderOption=UNFORMATTED_VALUE`)
-  ]);
-  if (!mainRes.ok) throw new Error(`Master sheet error: ${mainRes.status}`);
-  const mainJson = await mainRes.json();
-  const allRows  = mainJson.values || [];
-  const linkJson = linkRes.ok ? await linkRes.json() : {values:[]};
-  const linkRows = linkJson.values || [];
+async function loadCampaigns() {
+  const amColIdx = getAmColIdx(); // 0-based
+
+  const { values: allRows, links: linkRows } = await fetchMasterData();
 
   const campaigns = [];
   for (let i = 0; i < allRows.length; i++) {
@@ -818,7 +795,7 @@ async function fetchWithRetry(url, retries=3) {
 }
 
 async function refreshDaily() {
-  if (!getApiKey() || !getMasterId() || !getAm()) {
+  if (!getMasterId() || !getAm()) {
     setStatus('daily-status', '⚠ Please configure your settings first (click ⚙ Settings tab)');
     return;
   }
@@ -830,15 +807,7 @@ async function refreshDaily() {
 
   try {
     setProgress('daily-progress', 20);
-    const [singleRes, sheetLinkRes] = await Promise.all([
-      fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${getMasterId()}/values/${encodeURIComponent("'Index'!A1:CK2000")}?key=${getApiKey()}`),
-      fetchWithRetry(`https://sheets.googleapis.com/v4/spreadsheets/${getMasterId()}/values/${encodeURIComponent("'Index'!E1:E2000")}?key=${getApiKey()}&valueRenderOption=UNFORMATTED_VALUE`)
-    ]);
-    if (!singleRes.ok) throw new Error(`Sheets API error: ${singleRes.status}`);
-    const json = await singleRes.json();
-    const allRows = json.values || [];
-    const sheetLinkJson = sheetLinkRes.ok ? await sheetLinkRes.json() : {values:[]};
-    const sheetLinkRows = sheetLinkJson.values || [];
+    const { values: allRows, links: sheetLinkRows } = await fetchMasterData();
 
     setProgress('daily-progress', 50);
 
