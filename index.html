@@ -636,7 +636,8 @@ function fmtDate(dateStr) {
 
 async function fetchQualityData() {
   // Fetch the quality sheet (importranged copy, gid=0)
-  const url = `https://sheets.googleapis.com/v4/spreadsheets/${getQualityId()}/values/${encodeURIComponent("'alex.li'!A1:DL5000")}?key=${getApiKey()}`;
+  const amTab = getAm() || 'alex.li';
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${getQualityId()}/values/${encodeURIComponent(`'${amTab}'!A1:DL5000`)}?key=${getApiKey()}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Quality sheet error: ${res.status}`);
   const json = await res.json();
