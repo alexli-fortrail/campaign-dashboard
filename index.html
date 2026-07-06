@@ -711,9 +711,6 @@ async function fetchAllLiveD7() {
 
 
 /* ── WEEKLY DATA ── */
-let weeklyData = {};
-let weeklySort = { col: null, asc: false };
-
 async function fetchWeeklySheet(campaign) {
   // Use Web App (Service Account) to fetch weekly data
   const url = `${WEBAPP_URL}?action=weekly&sheetId=${encodeURIComponent(campaign.id)}&tabHint=${encodeURIComponent(campaign.name || '')}`;
@@ -772,6 +769,7 @@ async function refreshWeekly() {
 
 /* ── sorting ── */
 let dailySort = {col: null, asc: false};
+let weeklyData = {};
 let weeklySort = {col: null, asc: false};
 
 function sortDaily(col) {
