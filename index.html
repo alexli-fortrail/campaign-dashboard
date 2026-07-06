@@ -918,7 +918,6 @@ function renderDaily() {
   if (dailySort.col) {
     sortedCampaigns.sort((a, b) => {
       let av, bv;
-      const fmtDateStr = (d) => d ? d.replace(/\//g,'') : '';
       const dateStr = fmtDate(dailyData.dates[idx]);
       const qA = qualityMap[`${a.oid}_${dateStr}`];
       const qB = qualityMap[`${b.oid}_${dateStr}`];
@@ -1030,7 +1029,7 @@ function renderWeekly() {
 
   if (dailyData) {
     dailyData.campaigns.forEach(c => {
-      const d = weeklyData[c.name];
+      const d = weeklyData ? weeklyData[c.name] : null;
       if (!d) return;
       if (d.error) { rows.push({name: c.name, oid: c.oid, err: d.error}); return; }
       const curr = getWeek(d, week);
