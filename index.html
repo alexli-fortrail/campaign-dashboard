@@ -531,7 +531,7 @@ async function loadCampaigns() {
     fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getMasterId()}/values:batchGet?key=${getApiKey()}` +
       `&ranges=${encodeURIComponent('Index!A1:B2000')}` +
       `&ranges=${encodeURIComponent('Index!C1:C2000')}` +
-      `&ranges=${encodeURIComponent('Index!G1:G2000')}`),
+      `&ranges=${encodeURIComponent('Index!' + (loadConfig().amCol || 'G') + '1:' + (loadConfig().amCol || 'G') + '2000')}`),
     fetch(`https://sheets.googleapis.com/v4/spreadsheets/${getMasterId()}/values/${encodeURIComponent('Index!E1:E2000')}?key=${getApiKey()}&valueRenderOption=UNFORMATTED_VALUE`)
   ]);
   if (!batchRes.ok) throw new Error(`Master sheet error: ${batchRes.status}`);
@@ -551,7 +551,7 @@ async function loadCampaigns() {
     const link   = (linkRows[i]   || [])[0] || '';
     const am     = (amRows[i]     || [])[0] || '';
     if (!name) continue;
-    if (!am.toLowerCase().includes(getAm().toLowerCase())) continue;
+    if (getAm() && !am.toLowerCase().includes(getAm().toLowerCase())) continue;
     if (status !== 'Running' && status !== 'Paused') continue;
     if (!link.startsWith('https://docs.google.com/spreadsheets/d/')) continue;
     const fileId = link.split('/d/')[1]?.split('/')[0];
@@ -737,7 +737,7 @@ async function refreshDaily() {
     setProgress('daily-progress', 70);
 
     // Column indices (0-based)
-    const C_NAME=0, C_OID=1, C_STATUS=2, C_SHEET_LINK=4, C_AM=6;
+    const C_NAME=0, C_OID=1, C_STATUS=2, C_SHEET_LINK=4, C_AM=getAmColIdx();
     const C_MKT=19;
     const C_ROAS_D0=27, C_ROAS_D7=42;
     const C_SPEND=69, C_INST=80;
@@ -813,7 +813,7 @@ async function refreshDaily() {
     const ts = new Date().toLocaleTimeString();
     setStatus('daily-status', `${dailyData.campaigns.length} campaigns loaded · ${ts}`);
     document.getElementById('daily-note').textContent =
-      `Source: Master registry sheet · Filtered AM = alex.li · Last refreshed ${ts}`;
+      `Source: Master registry sheet · Filtered AM = ${getAm()} · Last refreshed ${ts}`;
 
     // Update date selector with actual dates
     const sel = document.getElementById('daily-date-sel');
@@ -1077,7 +1077,7 @@ async function refreshWeekly() {
   const ts = new Date().toLocaleTimeString();
   setStatus('weekly-status', `${Object.keys(weeklyData).length} campaigns loaded · ${ts}`);
   document.getElementById('weekly-note').textContent =
-    `Source: Weekly/Monthly tab from each campaign GSheet · alex.li Running campaigns · Last refreshed ${ts}`;
+    `Source: Weekly/Monthly tab from each campaign GSheet · ${getAm()} Running campaigns · Last refreshed ${ts}`;
 
   renderWeekly();
 }
