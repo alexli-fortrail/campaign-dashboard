@@ -1,0 +1,1277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Campaign Dashboard</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #ffffff;
+  --bg2: #f5f5f4;
+  --bg3: #eeede9;
+  --text: #1a1a18;
+  --text2: #5f5e5a;
+  --text3: #888780;
+  --border: rgba(0,0,0,0.12);
+  --border2: rgba(0,0,0,0.2);
+  --green: #1d9e75;
+  --green-bg: #e1f5ee;
+  --green-text: #085041;
+  --red: #e24b4a;
+  --red-bg: #fcebeb;
+  --red-text: #791f1f;
+  --blue: #378add;
+  --blue-bg: #e6f1fb;
+  --blue-text: #0c447c;
+  --amber: #ba7517;
+  --amber-bg: #faeeda;
+  --amber-text: #633806;
+  --radius: 8px;
+  --radius-lg: 12px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1c1a;
+    --bg2: #252523;
+    --bg3: #2e2e2b;
+    --text: #f0ede6;
+    --text2: #b4b2a9;
+    --text3: #888780;
+    --border: rgba(255,255,255,0.1);
+    --border2: rgba(255,255,255,0.18);
+    --green-bg: #04342c;
+    --green-text: #9fe1cb;
+    --red-bg: #501313;
+    --red-text: #f7c1c1;
+    --blue-bg: #042c53;
+    --blue-text: #b5d4f4;
+    --amber-bg: #412402;
+    --amber-text: #fac775;
+  }
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 100vh;
+}
+
+.app { max-width: 1200px; margin: 0 auto; padding: 24px 20px; }
+
+.sticky-top {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 100;
+  padding-top: 24px;
+  margin-top: -24px;
+  padding-bottom: 4px;
+  border-bottom: 0.5px solid var(--border);
+  margin-bottom: 20px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 0.5px solid var(--border);
+}
+.header-title { font-size: 18px; font-weight: 500; color: var(--text); }
+.header-sub { font-size: 12px; color: var(--text3); margin-top: 2px; }
+.header-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  border-bottom: 0.5px solid var(--border);
+}
+.tab {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text2);
+  cursor: pointer;
+  border: none;
+  background: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -0.5px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--text); border-bottom-color: var(--text); }
+
+.panel { display: none; }
+.panel.active { display: block; }
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.toolbar-spacer { flex: 1; }
+
+select, button {
+  font-size: 13px;
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  border: 0.5px solid var(--border2);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  font-family: inherit;
+}
+select:hover, button:hover { background: var(--bg2); }
+button:active { transform: scale(0.98); }
+.btn-primary {
+  background: var(--text);
+  color: var(--bg);
+  border-color: var(--text);
+}
+.btn-primary:hover { opacity: 0.85; background: var(--text); }
+
+.status-bar {
+  font-size: 12px;
+  color: var(--text3);
+  margin-bottom: 12px;
+  min-height: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.spinner {
+  width: 12px; height: 12px;
+  border: 1.5px solid var(--border2);
+  border-top-color: var(--text2);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.mcard {
+  background: var(--bg2);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+.mcard-label { font-size: 11px; color: var(--text3); margin-bottom: 4px; }
+.mcard-val { font-size: 20px; font-weight: 500; color: var(--text); line-height: 1.1; }
+.mcard-delta { font-size: 11px; margin-top: 3px; }
+
+.table-wrap {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: calc(100vh - 280px);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-lg);
+  margin-bottom: 16px;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+th {
+  background: var(--bg2);
+  color: var(--text3);
+  font-weight: 500;
+  font-size: 11px;
+  padding: 9px 12px;
+  border-bottom: 0.5px solid var(--border);
+  text-align: right;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+th:first-child { text-align: left; }
+td {
+  padding: 9px 12px;
+  text-align: right;
+  border-bottom: 0.5px solid var(--border);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  vertical-align: middle;
+}
+td:first-child { text-align: left; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: var(--bg2); }
+
+.badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: var(--radius);
+  white-space: nowrap;
+}
+.badge-green { background: var(--green-bg); color: var(--green-text); }
+.badge-red { background: var(--red-bg); color: var(--red-text); }
+.badge-amber { background: var(--amber-bg); color: var(--amber-text); }
+.badge-blue { background: var(--blue-bg); color: var(--blue-text); }
+
+.delta-up { color: var(--green); font-size: 11px; }
+.delta-down { color: var(--red); font-size: 11px; }
+.delta-flat { color: var(--text3); font-size: 11px; }
+
+.metric-cell { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+.metric-val { font-size: 12.5px; font-weight: 500; }
+
+.empty-row td { color: var(--text3); font-style: italic; text-align: center; padding: 24px; }
+.err-cell { color: var(--red); font-size: 11px; }
+
+.note {
+  font-size: 11px;
+  color: var(--text3);
+  padding-top: 10px;
+  border-top: 0.5px solid var(--border);
+}
+
+.progress-bar-wrap {
+  height: 3px;
+  background: var(--bg3);
+  border-radius: 2px;
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.progress-bar {
+  height: 100%;
+  background: var(--blue);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+  width: 0%;
+}
+/* Frozen first 3 columns */
+.freeze-1 {
+  position: sticky;
+  left: 0;
+  min-width: 180px;
+  background: var(--bg);
+  z-index: 2;
+  box-shadow: 2px 0 6px -2px rgba(0,0,0,0.12);
+}
+th.freeze-1 {
+  z-index: 11;
+  background: var(--bg2);
+}
+tr:hover .freeze-1 { background: var(--bg2); }
+
+
+/* Settings panel */
+.settings-panel { max-width: 560px; }
+.settings-group { margin-bottom: 20px; }
+.settings-label { font-size: 12px; font-weight: 500; color: var(--text2); margin-bottom: 6px; display: block; }
+.settings-hint { font-size: 11px; color: var(--text3); margin-top: 4px; }
+.settings-input {
+  width: 100%;
+  font-size: 13px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  border: 0.5px solid var(--border2);
+  background: var(--bg);
+  color: var(--text);
+  font-family: monospace;
+}
+.settings-input:focus { outline: none; border-color: var(--blue); }
+.settings-save {
+  font-size: 13px;
+  padding: 8px 20px;
+  border-radius: var(--radius);
+  border: none;
+  background: var(--text);
+  color: var(--bg);
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 500;
+}
+.settings-save:hover { opacity: 0.85; }
+.settings-saved { font-size: 12px; color: var(--green); margin-left: 10px; opacity: 0; transition: opacity 0.3s; }
+.settings-saved.show { opacity: 1; }
+.settings-divider { border: none; border-top: 0.5px solid var(--border); margin: 20px 0; }
+.first-run-banner {
+  background: var(--amber-bg);
+  color: var(--amber-text);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  font-size: 13px;
+  margin-bottom: 20px;
+  display: none;
+}
+.first-run-banner.show { display: block; }
+
+/* Daily-panel AM multi-select dropdown */
+.ms-dropdown { position: relative; }
+.ms-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 220px;
+}
+.ms-trigger-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ms-caret { color: var(--text3); font-size: 11px; flex-shrink: 0; }
+.ms-panel {
+  display: none;
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 220px;
+  z-index: 50;
+  background: var(--bg);
+  border: 0.5px solid var(--border2);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+  overflow: hidden;
+}
+.ms-panel.show { display: block; }
+.ms-panel-actions {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 0.5px solid var(--border);
+}
+.ms-panel-actions button {
+  font-size: 11px;
+  padding: 4px 8px;
+}
+.ms-options { max-height: 240px; overflow-y: auto; padding: 4px; }
+.ms-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.ms-option:hover { background: var(--bg2); }
+.ms-option input { cursor: pointer; }
+.ms-empty { padding: 12px 10px; font-size: 12px; color: var(--text3); white-space: nowrap; }
+
+</style>
+</head>
+<body>
+<div class="app">
+
+<div class="sticky-top"><div class="header">
+  <div class="header-dot"></div>
+  <div>
+    <div class="header-title">Campaign dashboard</div>
+    <div class="header-sub" id="header-sub">Loading...</div>
+  </div>
+</div>
+
+<div class="tabs">
+  <button class="tab active" onclick="switchTab('daily', this)">Daily</button>
+  <button class="tab" onclick="switchTab('weekly', this)">Weekly WoW</button>
+  <button class="tab" onclick="switchTab('settings', this)" style="margin-left:auto">⚙ Settings</button>
+</div>
+</div>
+
+<!-- DAILY PANEL -->
+<div id="panel-daily" class="panel active">
+  <div class="toolbar">
+    <select id="daily-date-sel" onchange="renderDaily()">
+      <option value="0">Loading dates...</option>
+    </select>
+    <div class="ms-dropdown" id="daily-am-dropdown">
+      <button type="button" class="ms-trigger" onclick="toggleDailyAmDropdown(event)">
+        <span class="ms-trigger-label" id="daily-am-trigger-label">All AMs</span>
+        <span class="ms-caret">▾</span>
+      </button>
+      <div class="ms-panel" id="daily-am-panel">
+        <div class="ms-panel-actions">
+          <button type="button" onclick="clearDailyAmSelection()">Clear (All AMs)</button>
+        </div>
+        <div class="ms-options" id="daily-am-options">
+          <div class="ms-empty">Load data first</div>
+        </div>
+      </div>
+    </div>
+    <button id="fetch-all-d7-btn" onclick="fetchAllLiveD7()" style="color:var(--green);border-color:var(--green)">↻ Fetch all live D7</button>
+    <div class="toolbar-spacer"></div>
+    <button onclick="refreshDaily()">↻ Refresh</button>
+  </div>
+  <div class="status-bar" id="daily-status"><span class="spinner"></span> Loading...</div>
+  <div class="progress-bar-wrap"><div class="progress-bar" id="daily-progress"></div></div>
+  <div class="summary-grid" id="daily-summary"></div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th class="freeze-1" data-col="name">Campaign <span class="sort-icon">↕</span></th>
+          <th style="min-width:120px">OID</th>
+          <th>Status</th>
+          <th data-col="spend" onclick="sortDaily('spend')" style="cursor:pointer">Spend<br><span style="font-weight:400;font-size:10px">DoD ↕</span></th>
+          <th data-col="inst" onclick="sortDaily('inst')" style="cursor:pointer">Installs<br><span style="font-weight:400;font-size:10px">DoD ↕</span></th>
+          <th data-col="roasD0" onclick="sortDaily('roasD0')" style="cursor:pointer">ROAS D0<br><span style="font-weight:400;font-size:10px">DoD ↕</span></th>
+          <th id="th-roas-d7-mature" data-col="roasD7" onclick="sortDaily('roasD7')" style="cursor:pointer">ROAS D7<br><span style="font-weight:400;font-size:10px">mature ↕</span></th>
+          <th>ROAS D7<br><span style="font-weight:400;font-size:10px;color:var(--green)">live ↻</span></th>
+          <th data-col="ctcv" onclick="sortDaily('ctcv')" style="cursor:pointer">CTCV ratio ↕</th>
+          <th data-col="mkt" onclick="sortDaily('mkt')" style="cursor:pointer">Market share<br><span style="font-weight:400;font-size:10px">DoD ↕</span></th>
+          <th data-col="invalid" onclick="sortDaily('invalid')" style="cursor:pointer">Invalid % (MMP)<br><span style="font-weight:400;font-size:10px">↕</span></th>
+          <th data-col="invAppier" onclick="sortDaily('invAppier')" style="cursor:pointer">Invalid % (Appier)<br><span style="font-weight:400;font-size:10px">↕</span></th>
+          <th data-col="dist" onclick="sortDaily('dist')" style="cursor:pointer">Dist. Outlier %<br><span style="font-weight:400;font-size:10px">↕</span></th>
+          <th data-col="pa" onclick="sortDaily('pa')" style="cursor:pointer">PA ratio %<br><span style="font-weight:400;font-size:10px">↕</span></th>
+          <th data-col="ctcvCvr" onclick="sortDaily('ctcvCvr')" style="cursor:pointer">CTCV CVR<br><span style="font-weight:400;font-size:10px">↕</span></th>
+        </tr>
+      </thead>
+      <tbody id="daily-table"><tr class="empty-row"><td colspan="15">Loading...</td></tr></tbody>
+    </table>
+  </div>
+  <div class="note" id="daily-note"></div>
+</div>
+
+<!-- WEEKLY PANEL -->
+<div id="panel-weekly" class="panel">
+  <div class="toolbar">
+    <select id="weekly-week-sel" onchange="renderWeekly()"><option>Loading weeks...</option></select>
+    <div class="toolbar-spacer"></div>
+    <button onclick="refreshWeekly()">↻ Refresh</button>
+  </div>
+  <div class="status-bar" id="weekly-status">Click ↻ Refresh to load weekly data</div>
+  <div class="progress-bar-wrap"><div class="progress-bar" id="weekly-progress"></div></div>
+  <div class="summary-grid" id="weekly-summary"></div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th class="freeze-1">Campaign</th>
+          <th style="min-width:120px">OID</th>
+          <th data-col="installs" onclick="sortWeekly('installs')" style="cursor:pointer">Installs<br><span style="font-weight:400;font-size:10px">WoW ↕</span></th>
+          <th data-col="spend" onclick="sortWeekly('spend')" style="cursor:pointer">Spend<br><span style="font-weight:400;font-size:10px">WoW ↕</span></th>
+          <th data-col="roasD0" onclick="sortWeekly('roasD0')" style="cursor:pointer">ROAS D0<br><span style="font-weight:400;font-size:10px">WoW ↕</span></th>
+          <th data-col="roasD7" onclick="sortWeekly('roasD7')" style="cursor:pointer">ROAS D7<br><span style="font-weight:400;font-size:10px">WoW ↕</span></th>
+        </tr>
+      </thead>
+      <tbody id="weekly-table"><tr class="empty-row"><td colspan="6" style="color:var(--text3)">Click ↻ Refresh to load weekly data</td></tr></tbody>
+    </table>
+  </div>
+  <div class="note" id="weekly-note"></div>
+</div>
+
+<!-- SETTINGS PANEL -->
+<div id="panel-settings" class="panel">
+  <div class="settings-panel">
+    <div class="first-run-banner" id="first-run-banner">
+      ⚠ Welcome! Please configure your settings before using the dashboard.
+    </div>
+
+    <div class="settings-group">
+      <label class="settings-label">AM Email</label>
+      <input class="settings-input" id="cfg-am" type="text" placeholder="e.g. alex.li" />
+      <div class="settings-hint">Your email prefix (without @appier.com) — used to filter campaigns assigned to you.</div>
+    </div>
+
+    <hr class="settings-divider">
+
+    <div class="settings-group">
+      <label class="settings-label">Master Registry Sheet URL</label>
+      <input class="settings-input" id="cfg-master" type="text" placeholder="https://docs.google.com/spreadsheets/d/..." />
+      <div class="settings-hint">The main campaign registry sheet for your region. Ask your team lead if you're not sure which one to use.</div>
+    </div>
+
+    <div class="settings-group">
+      <label class="settings-label">AM Email Column (Master Sheet)</label>
+      <input class="settings-input" id="cfg-amcol" type="text" placeholder="G" style="width:80px;font-family:monospace" />
+      <div class="settings-hint">Column letter in the master sheet that contains the AM email. Default: G</div>
+    </div>
+
+    <button class="settings-save" onclick="saveSettings()">Save settings</button>
+    <span class="settings-saved" id="settings-saved">✓ Saved</span>
+  </div>
+</div>
+
+
+</div>
+
+<script>
+// ── Config — loaded from localStorage ──
+const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbzO293LSvkdbPMYbX3AMZ3h5yIfBTr7qpH3ic9g0fU8t5a5Ccp1b7kFn0TKr24zZOP7ow/exec';
+
+const DEFAULT_CONFIG = {
+  am:       '',
+  masterId: '',
+  amCol:    'G',
+};
+
+function extractSheetId(urlOrId) {
+  if (!urlOrId) return '';
+  const m = urlOrId.match(/\/d\/([a-zA-Z0-9_-]+)/);
+  return m ? m[1] : urlOrId.trim();
+}
+
+function loadConfig() {
+  try {
+    const saved = localStorage.getItem('dashConfig');
+    return saved ? {...DEFAULT_CONFIG, ...JSON.parse(saved)} : {...DEFAULT_CONFIG};
+  } catch(e) { return {...DEFAULT_CONFIG}; }
+}
+
+function saveSettings() {
+  const cfg = {
+    am:        document.getElementById('cfg-am').value.trim(),
+    masterId:  extractSheetId(document.getElementById('cfg-master').value.trim()),
+    amCol:     document.getElementById('cfg-amcol').value.trim().toUpperCase() || 'G',
+  };
+  localStorage.setItem('dashConfig', JSON.stringify(cfg));
+  const saved = document.getElementById('settings-saved');
+  saved.classList.add('show');
+  setTimeout(() => saved.classList.remove('show'), 2000);
+  updateHeaderSub();
+}
+
+function updateHeaderSub() {
+  const cfg = loadConfig();
+  const sub = document.getElementById('header-sub');
+  if (sub) sub.textContent = (cfg.am || 'Not configured') + ' · AIBID · Running campaigns';
+}
+
+function populateSettingsForm() {
+  const cfg = loadConfig();
+  document.getElementById('cfg-am').value     = cfg.am || '';
+  document.getElementById('cfg-master').value = cfg.masterId ? 'https://docs.google.com/spreadsheets/d/' + cfg.masterId : '';
+  document.getElementById('cfg-amcol').value  = cfg.amCol || 'G';
+}
+
+function checkFirstRun() {
+  const cfg = loadConfig();
+  const isNew = !cfg.masterId;
+  document.getElementById('first-run-banner').classList.toggle('show', isNew);
+  return isNew;
+}
+
+// Dynamic getters — always read from current config
+function getMasterId() { return loadConfig().masterId; }
+function getAm()       { return loadConfig().am; }
+function getAmColIdx() {
+  const col = loadConfig().amCol || 'G';
+  let idx = 0;
+  for (const c of col.toUpperCase()) idx = idx * 26 + (c.charCodeAt(0) - 64);
+  return idx - 1;
+}
+
+let CAMPAIGNS = []; // dynamically loaded from master sheet
+let weeklyData = {};
+let availableWeeks = [];
+
+// Fetch the master registry sheet via the Apps Script Web App (service account),
+// instead of calling sheets.googleapis.com directly with an API key.
+async function fetchMasterData() {
+  const url = `${WEBAPP_URL}?action=master&masterId=${encodeURIComponent(getMasterId())}`;
+  const json = await jsonpRequest(url);
+  if (json.error) throw new Error(json.error);
+  return json; // { values, links }
+}
+
+async function loadCampaigns() {
+  const amColIdx = getAmColIdx(); // 0-based
+
+  const { values: allRows, links: linkRows } = await fetchMasterData();
+
+  const campaigns = [];
+  for (let i = 0; i < allRows.length; i++) {
+    const row    = allRows[i] || [];
+    const name   = String(row[0] || '').trim();
+    const oid    = String(row[1] || '').trim();
+    const status = String(row[2] || '').trim();
+    const link   = String((linkRows[i] || [])[0] || '').trim();
+    const am     = String(row[amColIdx] || '').trim();
+    if (!name) continue;
+    if (getAm() && !am.toLowerCase().includes(getAm().toLowerCase())) continue;
+    if (status !== 'Running' && status !== 'Paused') continue;
+    const fileId = link.startsWith('https://docs.google.com/spreadsheets/d/')
+      ? link.split('/d/')[1]?.split('/')[0] : '';
+    campaigns.push({name, oid, id: fileId, status, sheetId: fileId});
+  }
+  CAMPAIGNS = campaigns;
+  return campaigns;
+}
+
+/* ── helpers ── */
+function colIdx(col) {
+  col = col.toUpperCase();
+  let idx = 0;
+  for (const c of col) idx = idx * 26 + (c.charCodeAt(0) - 64);
+  return idx - 1;
+}
+function p(n, dec=2) {
+  if (n == null || isNaN(n)) return '—';
+  return Number(n).toFixed(dec);
+}
+function fmt$(n) {
+  if (n == null || isNaN(n)) return '—';
+  return '$' + Number(n).toLocaleString(undefined, {maximumFractionDigits: 0});
+}
+function fmtInt(n) {
+  if (n == null || isNaN(n)) return '—';
+  return Math.round(n).toLocaleString();
+}
+function delta(curr, prev) {
+  if (curr == null || prev == null || prev === 0) return null;
+  return ((curr - prev) / Math.abs(prev)) * 100;
+}
+function deltaHtml(pct, invert=false) {
+  if (pct == null) return '<span class="delta-flat">—</span>';
+  const up = invert ? pct < 0 : pct >= 0;
+  const cls = pct === 0 ? 'delta-flat' : up ? 'delta-up' : 'delta-down';
+  const arrow = pct === 0 ? '' : pct > 0 ? '▲ ' : '▼ ';
+  return `<span class="${cls}">${arrow}${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%</span>`;
+}
+function metricCell(val, prevVal, fmtFn, invertDelta=false) {
+  const d = delta(val, prevVal);
+  return `<div class="metric-cell">
+    <span class="metric-val">${fmtFn(val)}</span>
+    ${deltaHtml(d, invertDelta)}
+  </div>`;
+}
+function setStatus(id, msg, loading=false) {
+  const el = document.getElementById(id);
+  el.innerHTML = loading
+    ? `<span class="spinner"></span> ${msg}`
+    : msg;
+}
+function setProgress(id, pct) {
+  document.getElementById(id).style.width = pct + '%';
+}
+function fmtQuality(v) {
+  if (v == null || isNaN(v)) return '<span style="color:var(--text3)">—</span>';
+  // Values already in % form (e.g. 8.25 = 8.25%)
+  const color = v > 10 ? 'var(--red)' : v > 5 ? 'var(--amber)' : 'var(--text)';
+  return `<span style="color:${color}">${v.toFixed(2)}%</span>`;
+}
+
+function fmtCtcvCvr(v) {
+  if (v == null || isNaN(v)) return '<span style="color:var(--text3)">—</span>';
+  return `<span style="color:var(--text)">${v.toFixed(2)}%</span>`;
+}
+
+function parseNum(s) {
+  if (!s || s === '' || s === '-' || s === '—') return null;
+  return parseFloat(String(s).replace(/[$,%\s,]/g, '')) || null;
+}
+
+
+/* ── QUALITY DATA ── */
+let qualityMap = {}; // key: "oid_YYYYMMDD"
+
+function fmtDate(dateStr) {
+  // Convert "2026/06/15" → "20260615"
+  return dateStr.replace(/\//g, '');
+}
+
+async function fetchQualityData() {
+  qualityMap = {};
+  // Use Web App (Service Account) to fetch quality data — JSONP to avoid CORS
+  const url = `${WEBAPP_URL}?action=quality&am=${encodeURIComponent(getAm())}`;
+  const json = await jsonpRequest(url);
+  if (json.error) throw new Error(json.error);
+
+  const webRows = json.rows || [];
+  for (const r of webRows) {
+    if (!r.oid || !r.date) continue;
+    const key = `${r.oid}_${r.date}`;
+    qualityMap[key] = {
+      invalid:   parseNum(r.invalid),
+      invAppier: parseNum(r.invAppier),
+      dist:      parseNum(r.dist),
+      pa:        parseNum(r.pa),
+      ctcvCvr:   parseNum(r.ctcvCvr),
+      ctcvRatio: parseNum(r.ctcvRatio),
+    };
+  }
+  return webRows.length;
+}
+
+/* ── LIVE D7 ROAS ── */
+let liveD7Map = {}; // key: oid → value: { roasD7, loading, error }
+
+async function fetchLiveD7(campaignOid, sheetId, gid, targetDate, tabHint) {
+  liveD7Map[campaignOid] = { loading: true };
+  renderDaily();
+
+  try {
+    const url = `${WEBAPP_URL}?action=liveD7&sheetId=${encodeURIComponent(sheetId)}&date=${encodeURIComponent(targetDate)}&tabHint=${encodeURIComponent(tabHint || '')}`;
+    const json = await jsonpRequest(url);
+    if (json.error) throw new Error(json.error);
+    const found = json.roasD7;
+    if (found != null && found !== '') {
+      liveD7Map[campaignOid] = { roasD7: found };
+    } else {
+      liveD7Map[campaignOid] = { error: 'No data for this date' };
+    }
+  } catch(e) {
+    liveD7Map[campaignOid] = { error: e.message };
+  }
+  renderDaily();
+}
+
+async function fetchAllLiveD7() {
+  if (!dailyData || !dailyData.campaigns.length) return;
+  const btn = document.getElementById('fetch-all-d7-btn');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Fetching...'; }
+
+  const idx = parseInt(document.getElementById('daily-date-sel').value) || 0;
+  const targetDate = dailyData.dates[idx];
+  if (!targetDate) return;
+
+  // Fetch in batches of 3 to avoid rate limits
+  const campaigns = dailyData.campaigns.filter(c => c.sheetId && !liveD7Map[c.oid]);
+  let done = 0;
+  for (let i = 0; i < campaigns.length; i += 3) {
+    const batch = campaigns.slice(i, i + 3);
+    await Promise.allSettled(batch.map(c => fetchLiveD7(c.oid, c.sheetId, c.sheetGid || '0', targetDate, c.name)));
+    done += batch.length;
+    if (btn) btn.textContent = `⏳ ${done}/${campaigns.length}...`;
+    if (i + 3 < campaigns.length) await new Promise(r => setTimeout(r, 1000));
+  }
+
+  if (btn) { btn.disabled = false; btn.textContent = '↻ Fetch all live D7'; }
+}
+
+
+/* ── WEEKLY DATA ── */
+async function fetchWeeklySheet(campaign) {
+  // Use Web App (Service Account) to fetch weekly data — JSONP to avoid CORS
+  const url = `${WEBAPP_URL}?action=weekly&sheetId=${encodeURIComponent(campaign.id)}&tabHint=${encodeURIComponent(campaign.name || '')}`;
+  const json = await jsonpRequest(url);
+  if (json.error) throw new Error(json.error);
+  return json.weeks || [];
+}
+
+async function refreshWeekly() {
+  setStatus('weekly-status', 'Loading campaigns...', true);
+  setProgress('weekly-progress', 5);
+
+  try {
+    await loadCampaigns();
+    const running = CAMPAIGNS.filter(c => (c.status === 'Running' || c.status === 'Paused') && c.id && c.sheetId);
+    if (!running.length) {
+      setStatus('weekly-status', 'No running campaigns found');
+      setProgress('weekly-progress', 0);
+      return;
+    }
+
+    weeklyData = {};
+    let done = 0;
+    const batchSize = 2;
+
+    for (let i = 0; i < running.length; i += batchSize) {
+      const batch = running.slice(i, i + batchSize);
+      await Promise.allSettled(batch.map(async c => {
+        try {
+          const weeks = await fetchWeeklySheet(c);
+          if (weeks && weeks.length) weeklyData[c.name] = weeks;
+        } catch(e) {
+          console.warn('Weekly failed for', c.name, e.message);
+        }
+      }));
+      done += batch.length;
+      setProgress('weekly-progress', Math.round(10 + (done / running.length) * 85));
+      setStatus('weekly-status', `Loading ${done}/${running.length} campaigns...`, true);
+      if (i + batchSize < running.length) await new Promise(r => setTimeout(r, 2000));
+    }
+
+    setProgress('weekly-progress', 100);
+    const ts = new Date().toLocaleTimeString();
+    setStatus('weekly-status', `${Object.keys(weeklyData).length} campaigns loaded · ${ts}`);
+    populateWeekSelector();
+    renderWeekly();
+    setTimeout(() => setProgress('weekly-progress', 0), 600);
+
+  } catch(e) {
+    setStatus('weekly-status', `Error: ${e.message}`);
+    setProgress('weekly-progress', 0);
+  }
+}
+
+
+/* ── DAILY DATA ── */
+let dailyData = null;
+let dailyAmFilters = []; // page-level AM filter (separate from Settings AM), multi-select — for "view all AMs" mode
+
+// Populate the Daily-panel AM dropdown from the AM values found in the currently loaded campaigns.
+// Only meaningful when Settings AM is left empty (all campaigns loaded); if Settings AM is set,
+// this will just show that one AM.
+function populateDailyAmFilter() {
+  const optionsDiv = document.getElementById('daily-am-options');
+  if (!optionsDiv || !dailyData) return;
+  const prevSelected = dailyAmFilters.map(a => a.toLowerCase());
+  const ams = [...new Set(dailyData.campaigns.map(c => c.am).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b));
+
+  if (!ams.length) {
+    optionsDiv.innerHTML = '<div class="ms-empty">No AM values found</div>';
+    dailyAmFilters = [];
+  } else {
+    optionsDiv.innerHTML = ams.map(a => {
+      const checked = prevSelected.includes(a.toLowerCase()) ? 'checked' : '';
+      const safe = a.replace(/"/g, '&quot;');
+      return `<label class="ms-option">
+        <input type="checkbox" value="${safe}" ${checked} onchange="onDailyAmFilterChange()">
+        <span>${a}</span>
+      </label>`;
+    }).join('');
+    // Drop any previously-selected AMs that no longer exist in the loaded data
+    dailyAmFilters = dailyAmFilters.filter(a => ams.some(x => x.toLowerCase() === a.toLowerCase()));
+  }
+  updateDailyAmTriggerLabel();
+}
+
+function updateDailyAmTriggerLabel() {
+  const label = document.getElementById('daily-am-trigger-label');
+  if (!label) return;
+  if (!dailyAmFilters.length) label.textContent = 'All AMs';
+  else if (dailyAmFilters.length <= 2) label.textContent = dailyAmFilters.join(', ');
+  else label.textContent = `${dailyAmFilters.length} AMs selected`;
+}
+
+function toggleDailyAmDropdown(e) {
+  if (e) e.stopPropagation();
+  document.getElementById('daily-am-panel')?.classList.toggle('show');
+}
+
+document.addEventListener('click', (e) => {
+  const dd = document.getElementById('daily-am-dropdown');
+  if (dd && !dd.contains(e.target)) document.getElementById('daily-am-panel')?.classList.remove('show');
+});
+
+function clearDailyAmSelection() {
+  document.querySelectorAll('#daily-am-options input[type="checkbox"]').forEach(cb => cb.checked = false);
+  onDailyAmFilterChange();
+}
+
+// Fires whenever the checked AMs change in the Daily-panel dropdown.
+// Fetches quality data only for the selected AMs (one request per AM, merged) — cheap and safe,
+// never touches the full quality sheet across every AM.
+async function onDailyAmFilterChange() {
+  dailyAmFilters = [...document.querySelectorAll('#daily-am-options input[type="checkbox"]:checked')].map(cb => cb.value);
+  updateDailyAmTriggerLabel();
+
+  if (dailyAmFilters.length) {
+    setStatus('daily-status', `Loading quality data for ${dailyAmFilters.join(', ')}...`, true);
+    qualityMap = {};
+    const failed = [];
+    for (const am of dailyAmFilters) {
+      try {
+        await fetchQualityDataForAm(am, /*merge=*/true);
+      } catch (e) {
+        failed.push(am);
+      }
+    }
+    setStatus('daily-status', failed.length
+      ? `Quality data loaded, but failed for: ${failed.join(', ')}`
+      : `Quality data loaded for ${dailyAmFilters.join(', ')}`);
+  } else {
+    qualityMap = {}; // by design: quality metrics aren't fetched in the all-AMs view
+    setStatus('daily-status', 'Showing all AMs · select AM(s) above to view quality metrics');
+  }
+  renderDaily();
+}
+
+// Quality fetch for one AM, used by the Daily-panel multi-select dropdown above.
+// merge=true keeps existing qualityMap entries (used when looping over multiple selected AMs).
+async function fetchQualityDataForAm(am, merge) {
+  if (!merge) qualityMap = {};
+  const url = `${WEBAPP_URL}?action=quality&am=${encodeURIComponent(am)}`;
+  const json = await jsonpRequest(url);
+  if (json.error) throw new Error(json.error);
+  const webRows = json.rows || [];
+  for (const r of webRows) {
+    if (!r.oid || !r.date) continue;
+    const key = `${r.oid}_${r.date}`;
+    qualityMap[key] = {
+      invalid:   parseNum(r.invalid),
+      invAppier: parseNum(r.invAppier),
+      dist:      parseNum(r.dist),
+      pa:        parseNum(r.pa),
+      ctcvCvr:   parseNum(r.ctcvCvr),
+      ctcvRatio: parseNum(r.ctcvRatio),
+    };
+  }
+  return webRows.length;
+}
+
+// JSONP helper — used for calling the Apps Script Web App (script.google.com),
+// which does not reliably return CORS headers for plain fetch() calls.
+// Sheets API calls (sheets.googleapis.com) still use fetchWithRetry() below.
+function jsonpRequest(url, timeoutMs = 15000) {
+  return new Promise((resolve, reject) => {
+    const cbName = '__jsonp_cb_' + Date.now() + '_' + Math.floor(Math.random() * 1e6);
+    const script = document.createElement('script');
+    let settled = false;
+
+    const cleanup = () => {
+      delete window[cbName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+      clearTimeout(timer);
+    };
+
+    window[cbName] = (data) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(data);
+    };
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error('Request timed out'));
+    }, timeoutMs);
+
+    script.onerror = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error('Script load failed'));
+    };
+
+    const sep = url.includes('?') ? '&' : '?';
+    script.src = url + sep + 'callback=' + cbName;
+    document.body.appendChild(script);
+  });
+}
+
+async function fetchWithRetry(url, retries=3) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch(url);
+      if (res.status === 429) { await new Promise(r => setTimeout(r, 2000 * (i+1))); continue; }
+      return res;
+    } catch(e) { if (i === retries-1) throw e; await new Promise(r => setTimeout(r, 1000)); }
+  }
+}
+
+async function refreshDaily() {
+  if (!getMasterId()) {
+    setStatus('daily-status', '⚠ Please configure your settings first (click ⚙ Settings tab)');
+    return;
+  }
+  setStatus('daily-status', 'Fetching master sheet + quality data...', true);
+  setProgress('daily-progress', 5);
+  document.getElementById('daily-table').innerHTML = `<tr class="empty-row"><td colspan="15">Loading...</td></tr>`;
+  document.getElementById('daily-summary').innerHTML = '';
+  liveD7Map = {};
+
+  try {
+    setProgress('daily-progress', 20);
+    const { values: allRows, links: sheetLinkRows } = await fetchMasterData();
+
+    setProgress('daily-progress', 50);
+
+    const C_NAME=0, C_OID=1, C_STATUS=2, C_SHEET_LINK=4, C_AM=getAmColIdx();
+    const C_MKT=19, C_ROAS_D0=27, C_ROAS_D7=42, C_SPEND=69, C_INST=80;
+
+    let dateRowIdx = -1;
+    for (let i = 0; i < Math.min(allRows.length, 5); i++) {
+      const row = allRows[i] || [];
+      if (row[C_SPEND] && /\d{4}\/\d{2}\/\d{2}/.test(String(row[C_SPEND]))) { dateRowIdx = i; break; }
+    }
+    const dateRowData = dateRowIdx >= 0 ? allRows[dateRowIdx] : [];
+    const dates = [0,1,2,3].map(i => dateRowData[C_SPEND + i] || '');
+    const roasD7Dates = [0,1,2,3].map(i => dateRowData[C_ROAS_D7 + i] || '');
+
+    const g4 = (row, c) => [0,1,2,3].map(i => parseNum(row[c+i]));
+
+    dailyData = {dates, roasD7Dates, campaigns: []};
+
+    for (let i = 0; i < allRows.length; i++) {
+      const row = allRows[i] || [];
+      const name   = String(row[C_NAME]   || '').trim();
+      const oid    = String(row[C_OID]    || '').trim();
+      const status = String(row[C_STATUS] || '').trim();
+      const am     = String(row[C_AM]     || '').trim();
+      const sheetLinkRaw = String((sheetLinkRows[i] || [])[0] || row[C_SHEET_LINK] || '').trim();
+      const sheetId = sheetLinkRaw.includes('/d/') ? sheetLinkRaw.split('/d/')[1].split('/')[0] : '';
+      const sheetGid = sheetLinkRaw.includes('gid=') ? sheetLinkRaw.split('gid=')[1].split('&')[0].split('#')[0] : '0';
+
+      if (!name || !am.toLowerCase().includes(getAm().toLowerCase())) continue;
+      const instToday = parseNum(row[C_INST]);
+      if (status !== 'Running' && !(instToday > 0)) continue;
+
+      const spend  = g4(row, C_SPEND);
+      const inst   = g4(row, C_INST);
+      const roasD0 = g4(row, C_ROAS_D0);
+      const roasD7 = g4(row, C_ROAS_D7);
+      const mkt    = g4(row, C_MKT);
+
+      dailyData.campaigns.push({name, oid, status, sheetId, sheetGid, am, spend, inst, roasD0, roasD7, mkt});
+    }
+
+    populateDailyAmFilter();
+
+    setProgress('daily-progress', 70);
+
+    // Fetch quality data via Web App
+    if (getAm()) {
+      try {
+        const qCount = await fetchQualityData();
+        console.log('Quality data loaded:', qCount, 'records');
+      } catch(e) {
+        console.error('Quality data failed:', e.message);
+        setStatus('daily-status', `Warning: quality data unavailable (${e.message})`, true);
+      }
+    }
+
+    setProgress('daily-progress', 100);
+    const ts = new Date().toLocaleTimeString();
+    setStatus('daily-status', `${dailyData.campaigns.length} campaigns loaded · ${ts}`);
+    document.getElementById('daily-note').textContent =
+      `Source: Master registry sheet · Filtered AM = ${getAm() || 'All'} · Last refreshed ${ts}`;
+
+    const sel = document.getElementById('daily-date-sel');
+    sel.innerHTML = dates
+      .map((d, i) => ({d, i}))
+      .filter(({d}) => d)
+      .map(({d, i}) =>
+        `<option value="${i}">${d}${i === 0 ? ' (today)' : i === 1 ? ' (yesterday)' : ''}</option>`
+      ).join('');
+
+    renderDaily();
+    setTimeout(() => setProgress('daily-progress', 0), 600);
+
+  } catch(e) {
+    setProgress('daily-progress', 0);
+    setStatus('daily-status', `Error: ${e.message}`);
+    document.getElementById('daily-table').innerHTML =
+      `<tr class="empty-row"><td colspan="15" style="color:var(--red)">${e.message}</td></tr>`;
+  }
+}
+
+function resetLiveD7() {
+  liveD7Map = {};
+}
+
+function renderDaily() {
+  if (!dailyData) return;
+  const idx = parseInt(document.getElementById('daily-date-sel').value) || 0;
+  const selectedDate = dailyData.dates[idx] || '';
+  console.log('renderDaily: idx=', idx, 'sel.value=', document.getElementById('daily-date-sel').value, 'dates=', dailyData.dates, 'spend[0][0]=', dailyData.campaigns[0]?.spend[0], 'spend[idx][0]=', dailyData.campaigns[0]?.spend[idx]);
+
+  if (renderDaily._lastDate && renderDaily._lastDate !== selectedDate) resetLiveD7();
+  renderDaily._lastDate = selectedDate;
+
+  const d7MatureDate = dailyData.roasD7Dates ? dailyData.roasD7Dates[idx] || '' : '';
+  const thD7 = document.getElementById('th-roas-d7-mature');
+  if (thD7) thD7.innerHTML = `ROAS D7<br><span style="font-weight:400;font-size:10px">${d7MatureDate ? d7MatureDate + ' ↕' : 'mature ↕'}</span>`;
+
+  const prevIdx = idx + 1;
+  const hasPrev = prevIdx < 4;
+  let totalSpend = 0, totalInst = 0;
+
+  let sortedCampaigns = dailyAmFilters.length
+    ? dailyData.campaigns.filter(c => dailyAmFilters.some(a => a.toLowerCase() === (c.am || '').toLowerCase()))
+    : [...dailyData.campaigns];
+  if (dailySort.col) {
+    sortedCampaigns.sort((a, b) => {
+      let av, bv;
+      const dateStr = fmtDate(dailyData.dates[idx]);
+      const qA = qualityMap[`${a.oid}_${dateStr}`];
+      const qB = qualityMap[`${b.oid}_${dateStr}`];
+      if (dailySort.col === 'spend')    { av = a.spend[idx] ?? -Infinity; bv = b.spend[idx] ?? -Infinity; }
+      else if (dailySort.col === 'inst')  { av = a.inst[idx]  ?? -Infinity; bv = b.inst[idx]  ?? -Infinity; }
+      else if (dailySort.col === 'roasD0'){ av = a.roasD0[idx] ?? -Infinity; bv = b.roasD0[idx] ?? -Infinity; }
+      else if (dailySort.col === 'roasD7'){ av = a.roasD7[idx] ?? -Infinity; bv = b.roasD7[idx] ?? -Infinity; }
+      else if (dailySort.col === 'mkt')   { av = a.mkt[idx]   ?? -Infinity; bv = b.mkt[idx]   ?? -Infinity; }
+      else if (dailySort.col === 'ctcv')  { av = qA?.ctcvRatio ?? -Infinity; bv = qB?.ctcvRatio ?? -Infinity; }
+      else if (dailySort.col === 'invalid')  { av = qA?.invalid ?? -Infinity; bv = qB?.invalid ?? -Infinity; }
+      else if (dailySort.col === 'invAppier'){ av = qA?.invAppier ?? -Infinity; bv = qB?.invAppier ?? -Infinity; }
+      else if (dailySort.col === 'dist')  { av = qA?.dist ?? -Infinity; bv = qB?.dist ?? -Infinity; }
+      else if (dailySort.col === 'pa')    { av = qA?.pa ?? -Infinity; bv = qB?.pa ?? -Infinity; }
+      else if (dailySort.col === 'name')  { return dailySort.asc ? a.name.localeCompare(b.name) : b.name.localeCompare(a.name); }
+      else { av = 0; bv = 0; }
+      return dailySort.asc ? av - bv : bv - av;
+    });
+  }
+
+  const rows = sortedCampaigns.map(c => {
+    const spend  = c.spend[idx];
+    const pSpend = hasPrev ? c.spend[prevIdx] : null;
+    const inst   = c.inst[idx];
+    const pInst  = hasPrev ? c.inst[prevIdx] : null;
+    const rD0    = c.roasD0[idx];
+    const pRD0   = hasPrev ? c.roasD0[prevIdx] : null;
+    const rD7    = c.roasD7[idx];
+    const pRD7   = hasPrev ? c.roasD7[prevIdx] : null;
+    const mkt    = c.mkt ? c.mkt[idx] : null;
+    const pMkt   = hasPrev && c.mkt ? c.mkt[prevIdx] : null;
+
+    const dateStr = fmtDate(dailyData.dates[idx]);
+    const qkey = `${c.oid}_${dateStr}`;
+    const qdata = qualityMap[qkey] || null;
+
+    const ctcv   = qdata ? qdata.ctcvRatio : null;
+    const pCtcv  = null;
+
+    if (spend != null) totalSpend += spend;
+    if (inst != null)  totalInst  += inst;
+
+    const statusBadge = c.status === 'Running'
+      ? '<span class="badge badge-green">Running</span>'
+      : `<span class="badge badge-amber">${c.status}</span>`;
+
+    const ctcvFlag = ctcv == null ? '—' : ctcv < 35
+      ? `<span style="color:var(--red)">${p(ctcv)}%</span>`
+      : `${p(ctcv)}%`;
+
+    const live = liveD7Map[c.oid];
+    const liveD7Cell = !live
+      ? (c.sheetId ? `<button class="live-d7-btn" data-oid="${c.oid}" data-sheetid="${c.sheetId}" data-gid="${c.sheetGid || '0'}" data-date="${dailyData.dates[idx]}" data-tabhint="${c.name.replace(/"/g,'&quot;')}" style="font-size:10px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--border2);background:var(--bg);color:var(--text2);cursor:pointer">↻</button>` : '<span style="color:var(--text3)">—</span>')
+      : live.loading ? '<span style="color:var(--text3);font-size:11px">…</span>'
+      : live.error ? `<span style="color:var(--text3);font-size:10px" title="${live.error}">—</span>`
+      : `<span style="color:var(--green);font-weight:500">${live.roasD7}</span>`;
+
+    return `<tr>
+      <td class="freeze-1" title="${c.name}">${c.name.replace(/\[CN\]\s*/,'')}</td>
+      <td style="font-size:10px;color:var(--text3);max-width:120px;overflow:hidden;text-overflow:ellipsis">${c.oid}</td>
+      <td>${statusBadge}</td>
+      <td>${metricCell(spend, pSpend, fmt$)}</td>
+      <td>${metricCell(inst, pInst, fmtInt)}</td>
+      <td>${metricCell(rD0, pRD0, v => p(v)+'%')}</td>
+      <td>${metricCell(rD7, pRD7, v => p(v)+'%')}</td>
+      <td>${liveD7Cell}</td>
+      <td>${ctcvFlag}</td>
+      <td>${metricCell(mkt, pMkt, v => p(v)+'%')}</td>
+      <td>${fmtQuality(qdata?.invalid)}</td>
+      <td>${fmtQuality(qdata?.invAppier)}</td>
+      <td>${fmtQuality(qdata?.dist)}</td>
+      <td>${fmtQuality(qdata?.pa)}</td>
+      <td>${fmtCtcvCvr(qdata?.ctcvCvr)}</td>
+    </tr>`;
+  });
+
+  document.getElementById('daily-table').innerHTML = rows.join('') ||
+    `<tr class="empty-row"><td colspan="15">No campaigns found</td></tr>`;
+
+  document.getElementById('daily-summary').innerHTML = `
+    <div class="mcard"><div class="mcard-label">Total spend</div><div class="mcard-val">${fmt$(totalSpend)}</div></div>
+    <div class="mcard"><div class="mcard-label">Total installs</div><div class="mcard-val">${fmtInt(totalInst)}</div></div>
+    <div class="mcard"><div class="mcard-label">Campaigns</div><div class="mcard-val">${sortedCampaigns.length}</div></div>
+    <div class="mcard"><div class="mcard-label">Date</div><div class="mcard-val" style="font-size:13px">${dailyData.dates[idx] || '—'}</div></div>
+  `;
+}
+
+function populateWeekSelector() {
+  const weekSet = new Set();
+  Object.values(weeklyData).forEach(d => {
+    if (Array.isArray(d)) d.forEach(w => { if (w.range) weekSet.add(w.range); });
+  });
+  const weeks = [...weekSet].sort((a, b) => b.split(' - ')[0].localeCompare(a.split(' - ')[0]));
+  const sel = document.getElementById('weekly-week-sel');
+  sel.innerHTML = weeks.map((w, i) => `<option value="${w}"${i===0?' selected':''}>${w}</option>`).join('');
+}
+
+function renderWeekly() {
+  const week = document.getElementById('weekly-week-sel').value;
+  if (!week) return;
+
+  const allWeeks = [...document.getElementById('weekly-week-sel').options].map(o => o.value);
+  const prevWeekIdx = allWeeks.indexOf(week) + 1;
+  const prevWeek = prevWeekIdx < allWeeks.length ? allWeeks[prevWeekIdx] : null;
+
+  const getWeek = (d, range) => Array.isArray(d) ? d.find(w => w.range === range) || null : null;
+
+  let totalInst = 0, totalSpend = 0, roasD0Sum = 0, roasD7Sum = 0, roasCount = 0;
+  const rows = [];
+
+  if (dailyData) {
+    dailyData.campaigns.forEach(c => {
+      const d = weeklyData ? weeklyData[c.name] : null;
+      if (!d) return;
+      if (d.error) { rows.push({name: c.name, oid: c.oid, err: d.error}); return; }
+      const curr = getWeek(d, week);
+      const prev = prevWeek ? getWeek(d, prevWeek) : null;
+      if (!curr) { rows.push({name: c.name, oid: c.oid, nodata: true}); return; }
+      rows.push({name: c.name, oid: c.oid, curr, prev});
+      if (curr.installs != null) totalInst += curr.installs;
+      if (curr.spend != null)    totalSpend += curr.spend;
+      if (curr.roasD0 != null)   { roasD0Sum += curr.roasD0; roasCount++; }
+      if (curr.roasD7 != null)   roasD7Sum += curr.roasD7;
+    });
+  }
+
+  document.getElementById('weekly-summary').innerHTML = `
+    <div class="mcard"><div class="mcard-label">Total installs</div><div class="mcard-val">${fmtInt(totalInst)}</div></div>
+    <div class="mcard"><div class="mcard-label">Total spend</div><div class="mcard-val">${fmt$(totalSpend)}</div></div>
+    <div class="mcard"><div class="mcard-label">Avg ROAS D0</div><div class="mcard-val">${roasCount ? p(roasD0Sum/roasCount)+'%' : '—'}</div></div>
+    <div class="mcard"><div class="mcard-label">Avg ROAS D7</div><div class="mcard-val">${roasCount ? p(roasD7Sum/roasCount)+'%' : '—'}</div></div>
+    <div class="mcard"><div class="mcard-label">Campaigns</div><div class="mcard-val">${rows.filter(r=>r.curr).length}</div></div>
+  `;
+
+  document.getElementById('weekly-table').innerHTML = rows.map(r => {
+    if (r.err) return `<tr><td>${r.name.replace(/\[CN\]\s*/,'')}</td><td>${r.oid}</td><td colspan="4" class="err-cell">Error: ${r.err}</td></tr>`;
+    if (r.nodata) return `<tr><td style="color:var(--text3)">${r.name.replace(/\[CN\]\s*/,'')}</td><td style="color:var(--text3)">${r.oid}</td><td colspan="4" style="color:var(--text3);font-size:11px;text-align:center">no data</td></tr>`;
+    const {curr, prev} = r;
+    return `<tr>
+      <td title="${r.name}">${r.name.replace(/\[CN\]\s*/,'')}</td>
+      <td style="font-size:10px;color:var(--text3)">${r.oid}</td>
+      <td>${metricCell(curr.installs, prev?.installs, fmtInt)}</td>
+      <td>${metricCell(curr.spend, prev?.spend, fmt$)}</td>
+      <td>${metricCell(curr.roasD0, prev?.roasD0, v => p(v)+'%')}</td>
+      <td>${metricCell(curr.roasD7, prev?.roasD7, v => p(v)+'%')}</td>
+    </tr>`;
+  }).join('') || `<tr class="empty-row"><td colspan="6">No data for this week</td></tr>`;
+}
+
+/* ── sorting ── */
+let dailySort = {col: null, asc: false};
+let weeklySort = {col: null, asc: false};
+
+function sortDaily(col) {
+  if (dailySort.col === col) { dailySort.asc = !dailySort.asc; }
+  else { dailySort.col = col; dailySort.asc = false; }
+  renderDaily();
+}
+
+function sortWeekly(col) {
+  if (weeklySort.col === col) { weeklySort.asc = !weeklySort.asc; }
+  else { weeklySort.col = col; weeklySort.asc = false; }
+  renderWeekly();
+}
+
+/* ── tab switching ── */
+function switchTab(tab, btn) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('panel-' + tab).classList.add('active');
+  if (tab === 'settings') populateSettingsForm();
+}
+
+/* ── init ── */
+(async () => {
+  populateSettingsForm();
+  updateHeaderSub();
+  const isNew = checkFirstRun();
+  if (isNew) {
+    // Auto-switch to settings tab on first run
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.querySelector('.tab:last-child').classList.add('active');
+    document.getElementById('panel-settings').classList.add('active');
+  } else {
+    try { await loadCampaigns(); } catch(e) {}
+    refreshDaily();
+  }
+})();
+</script>
+</body>
+</html>
