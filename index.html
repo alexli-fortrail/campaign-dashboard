@@ -341,7 +341,7 @@ tr:hover .freeze-1 { background: var(--bg2); }
     <select id="daily-date-sel" onchange="renderDaily()">
       <option value="0">Loading dates...</option>
     </select>
-    <button id="fetch-all-d7-btn" onclick="fetchAllLiveD7()" style="color:var(--green);border-color:var(--green)">↻ Fetch all live D7</button>
+    <button id="fetch-all-d7-btn" onclick="fetchAllLiveD7()" style="color:var(--green);border-color:var(--green)">↻ Fetch live D7 &amp; RRD1</button>
     <div class="toolbar-spacer"></div>
     <button onclick="refreshDaily()">↻ Refresh</button>
   </div>
@@ -360,8 +360,10 @@ tr:hover .freeze-1 { background: var(--bg2); }
           <th data-col="roasD0" onclick="sortDaily('roasD0')" style="cursor:pointer">ROAS D0<br><span style="font-weight:400;font-size:10px">DoD ↕</span></th>
           <th id="th-roas-d7-mature" data-col="roasD7" onclick="sortDaily('roasD7')" style="cursor:pointer">ROAS D7<br><span style="font-weight:400;font-size:10px">mature ↕</span></th>
           <th>ROAS D7<br><span style="font-weight:400;font-size:10px;color:var(--green)">live ↻</span></th>
+          <th>RRD1<br><span style="font-weight:400;font-size:10px;color:var(--green)">live ↻</span></th>
           <th data-col="ctcv" onclick="sortDaily('ctcv')" style="cursor:pointer">CTCV ratio ↕</th>
           <th data-col="mkt" onclick="sortDaily('mkt')" style="cursor:pointer">Market share<br><span style="font-weight:400;font-size:10px">DoD ↕</span></th>
+          <th data-col="wholeSite" onclick="sortDaily('wholeSite')" style="cursor:pointer">Est. Whole Site Install<br><span style="font-weight:400;font-size:10px">DoD ↕</span></th>
           <th data-col="invalid" onclick="sortDaily('invalid')" style="cursor:pointer">Invalid % (MMP)<br><span style="font-weight:400;font-size:10px">↕</span></th>
           <th data-col="invAppier" onclick="sortDaily('invAppier')" style="cursor:pointer">Invalid % (Appier)<br><span style="font-weight:400;font-size:10px">↕</span></th>
           <th data-col="dist" onclick="sortDaily('dist')" style="cursor:pointer">Dist. Outlier %<br><span style="font-weight:400;font-size:10px">↕</span></th>
@@ -369,7 +371,7 @@ tr:hover .freeze-1 { background: var(--bg2); }
           <th data-col="ctcvCvr" onclick="sortDaily('ctcvCvr')" style="cursor:pointer">CTCV CVR<br><span style="font-weight:400;font-size:10px">↕</span></th>
         </tr>
       </thead>
-      <tbody id="daily-table"><tr class="empty-row"><td colspan="15">Loading...</td></tr></tbody>
+      <tbody id="daily-table"><tr class="empty-row"><td colspan="17">Loading...</td></tr></tbody>
     </table>
   </div>
   <div class="note" id="daily-note"></div>
@@ -604,6 +606,13 @@ function parseNum(s) {
   return parseFloat(String(s).replace(/[$,%\s,]/g, '')) || null;
 }
 
+// 预估 Whole Site Install = install / (market share% / 100)
+// mkt 存的是 "10" 代表 10%，所以先换算回小数再相除
+function wholeSiteInstall(inst, mkt) {
+  if (inst == null || mkt == null || mkt <= 0) return null;
+  return inst / (mkt / 100);
+}
+
 
 /* ── QUALITY DATA ── */
 let qualityMap = {}; // key: "oid_YYYYMMDD"
@@ -647,9 +656,13 @@ async function fetchLiveD7(campaignOid, sheetId, gid, targetDate, tabHint) {
     const url = `${WEBAPP_URL}?action=liveD7&sheetId=${encodeURIComponent(sheetId)}&date=${encodeURIComponent(targetDate)}&tabHint=${encodeURIComponent(tabHint || '')}`;
     const json = await jsonpRequest(url);
     if (json.error) throw new Error(json.error);
-    const found = json.roasD7;
-    if (found != null && found !== '') {
-      liveD7Map[campaignOid] = { roasD7: found };
+    const foundD7   = json.roasD7;
+    const foundRrd1 = json.rrd1;
+    if (foundD7 != null && foundD7 !== '') {
+      liveD7Map[campaignOid] = {
+        roasD7: foundD7,
+        rrd1: (foundRrd1 != null && foundRrd1 !== '') ? foundRrd1 : null
+      };
     } else {
       liveD7Map[campaignOid] = { error: 'No data for this date' };
     }
@@ -679,7 +692,7 @@ async function fetchAllLiveD7() {
     if (i + 3 < campaigns.length) await new Promise(r => setTimeout(r, 1000));
   }
 
-  if (btn) { btn.disabled = false; btn.textContent = '↻ Fetch all live D7'; }
+  if (btn) { btn.disabled = false; btn.textContent = '↻ Fetch live D7 & RRD1'; }
 }
 
 
@@ -801,7 +814,7 @@ async function refreshDaily() {
   }
   setStatus('daily-status', 'Fetching master sheet + quality data...', true);
   setProgress('daily-progress', 5);
-  document.getElementById('daily-table').innerHTML = `<tr class="empty-row"><td colspan="15">Loading...</td></tr>`;
+  document.getElementById('daily-table').innerHTML = `<tr class="empty-row"><td colspan="17">Loading...</td></tr>`;
   document.getElementById('daily-summary').innerHTML = '';
   liveD7Map = {};
 
@@ -884,7 +897,7 @@ async function refreshDaily() {
     setProgress('daily-progress', 0);
     setStatus('daily-status', `Error: ${e.message}`);
     document.getElementById('daily-table').innerHTML =
-      `<tr class="empty-row"><td colspan="15" style="color:var(--red)">${e.message}</td></tr>`;
+      `<tr class="empty-row"><td colspan="17" style="color:var(--red)">${e.message}</td></tr>`;
   }
 }
 
@@ -921,6 +934,10 @@ function renderDaily() {
       else if (dailySort.col === 'roasD0'){ av = a.roasD0[idx] ?? -Infinity; bv = b.roasD0[idx] ?? -Infinity; }
       else if (dailySort.col === 'roasD7'){ av = a.roasD7[idx] ?? -Infinity; bv = b.roasD7[idx] ?? -Infinity; }
       else if (dailySort.col === 'mkt')   { av = a.mkt[idx]   ?? -Infinity; bv = b.mkt[idx]   ?? -Infinity; }
+      else if (dailySort.col === 'wholeSite') {
+        av = wholeSiteInstall(a.inst[idx], a.mkt ? a.mkt[idx] : null) ?? -Infinity;
+        bv = wholeSiteInstall(b.inst[idx], b.mkt ? b.mkt[idx] : null) ?? -Infinity;
+      }
       else if (dailySort.col === 'ctcv')  { av = qA?.ctcvRatio ?? -Infinity; bv = qB?.ctcvRatio ?? -Infinity; }
       else if (dailySort.col === 'invalid')  { av = qA?.invalid ?? -Infinity; bv = qB?.invalid ?? -Infinity; }
       else if (dailySort.col === 'invAppier'){ av = qA?.invAppier ?? -Infinity; bv = qB?.invAppier ?? -Infinity; }
@@ -944,6 +961,9 @@ function renderDaily() {
     const mkt    = c.mkt ? c.mkt[idx] : null;
     const pMkt   = hasPrev && c.mkt ? c.mkt[prevIdx] : null;
 
+    const wsInst  = wholeSiteInstall(inst, mkt);
+    const wsPInst = hasPrev ? wholeSiteInstall(pInst, pMkt) : null;
+
     const dateStr = fmtDate(dailyData.dates[idx]);
     const qkey = `${c.oid}_${dateStr}`;
     const qdata = qualityMap[qkey] || null;
@@ -964,10 +984,17 @@ function renderDaily() {
 
     const live = liveD7Map[c.oid];
     const liveD7Cell = !live
-      ? (c.sheetId ? `<button class="live-d7-btn" data-oid="${c.oid}" data-sheetid="${c.sheetId}" data-gid="${c.sheetGid || '0'}" data-date="${dailyData.dates[idx]}" data-tabhint="${c.name.replace(/"/g,'&quot;')}" style="font-size:10px;padding:2px 8px;border-radius:4px;border:0.5px solid var(--border2);background:var(--bg);color:var(--text2);cursor:pointer">↻</button>` : '<span style="color:var(--text3)">—</span>')
+      ? '<span style="color:var(--text3)">—</span>'
       : live.loading ? '<span style="color:var(--text3);font-size:11px">…</span>'
       : live.error ? `<span style="color:var(--text3);font-size:10px" title="${live.error}">—</span>`
       : `<span style="color:var(--green);font-weight:500">${live.roasD7}</span>`;
+
+    const rrd1Cell = !live
+      ? '<span style="color:var(--text3)">—</span>'
+      : live.loading ? '<span style="color:var(--text3);font-size:11px">…</span>'
+      : live.error ? '<span style="color:var(--text3)">—</span>'
+      : live.rrd1 == null ? '<span style="color:var(--text3)">—</span>'
+      : `<span style="color:var(--green);font-weight:500">${live.rrd1}</span>`;
 
     return `<tr>
       <td class="freeze-1" title="${c.name}">${c.name.replace(/\[CN\]\s*/,'')}</td>
@@ -978,8 +1005,10 @@ function renderDaily() {
       <td>${metricCell(rD0, pRD0, v => p(v)+'%')}</td>
       <td>${metricCell(rD7, pRD7, v => p(v)+'%')}</td>
       <td>${liveD7Cell}</td>
+      <td>${rrd1Cell}</td>
       <td>${ctcvFlag}</td>
       <td>${metricCell(mkt, pMkt, v => p(v)+'%')}</td>
+      <td>${metricCell(wsInst, wsPInst, fmtInt)}</td>
       <td>${fmtQuality(qdata?.invalid)}</td>
       <td>${fmtQuality(qdata?.invAppier)}</td>
       <td>${fmtQuality(qdata?.dist)}</td>
@@ -989,7 +1018,7 @@ function renderDaily() {
   });
 
   document.getElementById('daily-table').innerHTML = rows.join('') ||
-    `<tr class="empty-row"><td colspan="15">No campaigns found</td></tr>`;
+    `<tr class="empty-row"><td colspan="17">No campaigns found</td></tr>`;
 
   document.getElementById('daily-summary').innerHTML = `
     <div class="mcard"><div class="mcard-label">Total spend</div><div class="mcard-val">${fmt$(totalSpend)}</div></div>
