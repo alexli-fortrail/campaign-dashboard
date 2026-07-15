@@ -426,7 +426,6 @@ tr:hover .freeze-1 { background: var(--bg2); }
           <th>RRD1<br><span style="font-weight:400;font-size:10px;color:var(--green)">live ↻</span></th>
           <th data-col="ctcv" onclick="sortDaily('ctcv')" style="cursor:pointer">CTCV ratio ↕</th>
           <th data-col="mkt" onclick="sortDaily('mkt')" style="cursor:pointer">Market share<br><span style="font-weight:400;font-size:10px">DoD ↕</span></th>
-          <th data-col="wholeSite" onclick="sortDaily('wholeSite')" style="cursor:pointer">Est. Whole Site Install<br><span style="font-weight:400;font-size:10px">DoD ↕</span></th>
           <th data-col="invalid" onclick="sortDaily('invalid')" style="cursor:pointer">Invalid % (MMP)<br><span style="font-weight:400;font-size:10px">↕</span></th>
           <th data-col="invAppier" onclick="sortDaily('invAppier')" style="cursor:pointer">Invalid % (Appier)<br><span style="font-weight:400;font-size:10px">↕</span></th>
           <th data-col="dist" onclick="sortDaily('dist')" style="cursor:pointer">Dist. Outlier %<br><span style="font-weight:400;font-size:10px">↕</span></th>
@@ -434,7 +433,7 @@ tr:hover .freeze-1 { background: var(--bg2); }
           <th data-col="ctcvCvr" onclick="sortDaily('ctcvCvr')" style="cursor:pointer">CTCV CVR<br><span style="font-weight:400;font-size:10px">↕</span></th>
         </tr>
       </thead>
-      <tbody id="daily-table"><tr class="empty-row"><td colspan="17">Loading...</td></tr></tbody>
+      <tbody id="daily-table"><tr class="empty-row"><td colspan="16">Loading...</td></tr></tbody>
     </table>
   </div>
   <div class="note" id="daily-note"></div>
@@ -667,13 +666,6 @@ function fmtCtcvCvr(v) {
 function parseNum(s) {
   if (!s || s === '' || s === '-' || s === '—') return null;
   return parseFloat(String(s).replace(/[$,%\s,]/g, '')) || null;
-}
-
-// 预估 Whole Site Install = install / (market share% / 100)
-// mkt 存的是 "10" 代表 10%，所以先换算回小数再相除
-function wholeSiteInstall(inst, mkt) {
-  if (inst == null || mkt == null || mkt <= 0) return null;
-  return inst / (mkt / 100);
 }
 
 
@@ -980,7 +972,7 @@ async function refreshDaily() {
   }
   setStatus('daily-status', 'Fetching master sheet + quality data...', true);
   setProgress('daily-progress', 5);
-  document.getElementById('daily-table').innerHTML = `<tr class="empty-row"><td colspan="17">Loading...</td></tr>`;
+  document.getElementById('daily-table').innerHTML = `<tr class="empty-row"><td colspan="16">Loading...</td></tr>`;
   document.getElementById('daily-summary').innerHTML = '';
   liveD7Map = {};
 
@@ -1065,7 +1057,7 @@ async function refreshDaily() {
     setProgress('daily-progress', 0);
     setStatus('daily-status', `Error: ${e.message}`);
     document.getElementById('daily-table').innerHTML =
-      `<tr class="empty-row"><td colspan="17" style="color:var(--red)">${e.message}</td></tr>`;
+      `<tr class="empty-row"><td colspan="16" style="color:var(--red)">${e.message}</td></tr>`;
   }
 }
 
@@ -1104,10 +1096,6 @@ function renderDaily() {
       else if (dailySort.col === 'roasD0'){ av = a.roasD0[idx] ?? -Infinity; bv = b.roasD0[idx] ?? -Infinity; }
       else if (dailySort.col === 'roasD7'){ av = a.roasD7[idx] ?? -Infinity; bv = b.roasD7[idx] ?? -Infinity; }
       else if (dailySort.col === 'mkt')   { av = a.mkt[idx]   ?? -Infinity; bv = b.mkt[idx]   ?? -Infinity; }
-      else if (dailySort.col === 'wholeSite') {
-        av = wholeSiteInstall(a.inst[idx], a.mkt ? a.mkt[idx] : null) ?? -Infinity;
-        bv = wholeSiteInstall(b.inst[idx], b.mkt ? b.mkt[idx] : null) ?? -Infinity;
-      }
       else if (dailySort.col === 'ctcv')  { av = qA?.ctcvRatio ?? -Infinity; bv = qB?.ctcvRatio ?? -Infinity; }
       else if (dailySort.col === 'invalid')  { av = qA?.invalid ?? -Infinity; bv = qB?.invalid ?? -Infinity; }
       else if (dailySort.col === 'invAppier'){ av = qA?.invAppier ?? -Infinity; bv = qB?.invAppier ?? -Infinity; }
@@ -1130,9 +1118,6 @@ function renderDaily() {
     const pRD7   = hasPrev ? c.roasD7[prevIdx] : null;
     const mkt    = c.mkt ? c.mkt[idx] : null;
     const pMkt   = hasPrev && c.mkt ? c.mkt[prevIdx] : null;
-
-    const wsInst  = wholeSiteInstall(inst, mkt);
-    const wsPInst = hasPrev ? wholeSiteInstall(pInst, pMkt) : null;
 
     const dateStr = fmtDate(dailyData.dates[idx]);
     const qkey = `${c.oid}_${dateStr}`;
@@ -1178,7 +1163,6 @@ function renderDaily() {
       <td>${rrd1Cell}</td>
       <td>${ctcvFlag}</td>
       <td>${metricCell(mkt, pMkt, v => p(v)+'%')}</td>
-      <td>${metricCell(wsInst, wsPInst, fmtInt)}</td>
       <td>${fmtQuality(qdata?.invalid)}</td>
       <td>${fmtQuality(qdata?.invAppier)}</td>
       <td>${fmtQuality(qdata?.dist)}</td>
@@ -1188,7 +1172,7 @@ function renderDaily() {
   });
 
   document.getElementById('daily-table').innerHTML = rows.join('') ||
-    `<tr class="empty-row"><td colspan="17">No campaigns found</td></tr>`;
+    `<tr class="empty-row"><td colspan="16">No campaigns found</td></tr>`;
 
   document.getElementById('daily-summary').innerHTML = `
     <div class="mcard"><div class="mcard-label">Total spend</div><div class="mcard-val">${fmt$(totalSpend)}</div></div>
